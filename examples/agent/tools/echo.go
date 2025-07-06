@@ -14,6 +14,6 @@ func (e Echo) Name() string {
 	return "echo"
 }
 
-func (e Echo) Execute(input genevieve.ToolExecutionInput) (string, error) {
+func (e Echo) Execute(input genevieve.AgentToolInput) (string, error) {
 	return "Echo: " + input.ToolInput, nil
 }

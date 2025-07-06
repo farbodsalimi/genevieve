@@ -47,19 +47,20 @@ func main() {
 	ctx := context.Background()
 
 	// Create a new OpenAI client
-	openaiClient := openai.NewClient(ctx, config.OpenAIAPIKey)
+	openaiClient := openai.NewClient(ctx, config.OpenAIAPIKey, genevieve.WithModel("gpt-4o"))
 
+	// Register OpenAI as a router
 	router := genevieve.NewRouter()
 	router.Register(openaiClient)
 
+	// Create a new agent with two tools
 	myAgent := genevieve.NewAgent(router)
-
 	myAgent.RegisterTool(tools.NewCalculator())
 	myAgent.RegisterTool(tools.NewEcho())
 
 	questions := []string{
-		"What is 4 + 5?",
-		"Hello agent, how are you?",
+		"What is 4 + 5?",            // this question will trigger the calculator tool
+		"Hello agent, how are you?", // this question will trigger the echo tool
 	}
 
 	for _, q := range questions {
