@@ -40,7 +40,6 @@ func (a *Agent) Handle(provider string, prompt string) (string, error) {
 
 	tool, ok := a.tools[toolInput.ToolName]
 	if !ok {
-		fmt.Println(a.tools, toolInput)
 		return "", fmt.Errorf("Unknown tool: %s", toolInput.ToolName)
 	}
 

@@ -2,7 +2,6 @@ package openai
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -78,18 +77,10 @@ func (c Client) ChooseTool(
 		return genevieve.ToolExecutionInput{}, err
 	}
 
-	fmt.Println("---------")
-	fmt.Println(jsonData)
-	fmt.Println("---------")
-
 	resp, err := genevieve.JSONToToolExecutionInput(jsonData)
 	if err != nil {
 		return genevieve.ToolExecutionInput{}, err
 	}
-
-	fmt.Println("---------")
-	fmt.Println(resp)
-	fmt.Println("---------")
 
 	return resp, nil
 }
