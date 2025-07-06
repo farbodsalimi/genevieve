@@ -29,7 +29,6 @@ type Config struct {
 }
 
 func main() {
-
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error("Panic occurred:", r)
