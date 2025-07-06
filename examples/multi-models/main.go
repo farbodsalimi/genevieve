@@ -3,17 +3,19 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"runtime/debug"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/op/go-logging"
 
 	"github.com/farbodsalimi/genevieve/pkg/genevieve"
 	"github.com/farbodsalimi/genevieve/pkg/providers/anthropic"
 	"github.com/farbodsalimi/genevieve/pkg/providers/google"
 	"github.com/farbodsalimi/genevieve/pkg/providers/openai"
 )
+
+var log = logging.MustGetLogger("example")
 
 const (
 	app     = "genevieve"
@@ -30,8 +32,8 @@ type Config struct {
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Println("Panic occurred:", r)
-			log.Println("Stack trace:\n", string(debug.Stack()))
+			log.Error("Panic occurred:", r)
+			log.Error("Stack trace:\n", string(debug.Stack()))
 		}
 	}()
 
@@ -64,12 +66,15 @@ func main() {
 
 	// Ask a specific provider
 	resp, err := assistant.Ask(openaiClient.Name(), prompt)
-	fmt.Println(resp, err)
+	if err != nil {
+		log.Fatalf("OpenAI errored out: %s", err.Error())
+	}
+	log.Infof("OpenAI answered: %s", resp)
 
 	// Ask all providers
 	results := assistant.AskAll(prompt)
 	for provider, result := range results {
-		fmt.Printf("[%s]: %s\n", provider, result)
+		log.Fatalf("[%s]: %s\n", provider, result)
 	}
 }
 

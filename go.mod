@@ -6,6 +6,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.5.0
 	github.com/joho/godotenv v1.5.1
 	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/openai/openai-go v1.8.2
 	google.golang.org/genai v1.14.0
 )

@@ -17,14 +17,29 @@ type Client struct {
 	client *genai.Client
 }
 
-// Chat implements genevieve.LLM.
+func NewClient(ctx context.Context, apiKey string) *Client {
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  apiKey,
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return &Client{ctx: ctx, client: client}
+}
+
+func (c Client) Name() string {
+	return "gemini"
+}
+
 func (c Client) Chat(messages []genevieve.Message) (string, error) {
 	content := []*genai.Content{}
 	for _, msg := range messages {
 		content = append(
 			content,
 			&genai.Content{
-				Role:  msg.Role,
+				Role:  string(msg.Role),
 				Parts: []*genai.Part{{Text: msg.Content}},
 			},
 		)
@@ -38,30 +53,33 @@ func (c Client) Chat(messages []genevieve.Message) (string, error) {
 	return result.Text(), err
 }
 
-// Complete implements genevieve.LLM.
 func (c Client) Complete(prompt string) (string, error) {
-	result, err := c.client.Models.GenerateContent(
-		c.ctx,
-		model,
-		[]*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: prompt}}}},
-		nil,
-	)
-	return result.Text(), err
+	result, err := c.Chat([]genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
+	return result, err
 }
 
-// Name implements genevieve.LLM.
-func (c Client) Name() string {
-	return "gemini"
-}
-
-func NewClient(ctx context.Context, apiKey string) *Client {
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
+func (c Client) ChooseTool(
+	question string,
+	toolNames []string,
+) (genevieve.ToolExecutionInput, error) {
+	jsonData, err := c.Chat([]genevieve.Message{
+		{
+			Role:    genevieve.RoleSystem,
+			Content: "You're an agent that chooses the right tool to answer a user's question.",
+		},
+		{
+			Role:    genevieve.RoleUser,
+			Content: genevieve.AgentChooseToolPrompt(toolNames, question),
+		},
 	})
 	if err != nil {
-		panic(err)
+		return genevieve.ToolExecutionInput{}, err
 	}
 
-	return &Client{ctx: ctx, client: client}
+	resp, err := genevieve.JSONToToolExecutionInput(jsonData)
+	if err != nil {
+		return genevieve.ToolExecutionInput{}, err
+	}
+
+	return resp, nil
 }
