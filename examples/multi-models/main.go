@@ -10,6 +10,7 @@ import (
 	"github.com/op/go-logging"
 
 	"github.com/farbodsalimi/genevieve/pkg/genevieve"
+	"github.com/farbodsalimi/genevieve/pkg/providers/anthropic"
 	"github.com/farbodsalimi/genevieve/pkg/providers/google"
 	"github.com/farbodsalimi/genevieve/pkg/providers/openai"
 )
@@ -47,12 +48,12 @@ func main() {
 	ctx := context.Background()
 
 	openaiClient := openai.NewClient(ctx, config.OpenAIAPIKey)
-	// anthropicClient := anthropic.NewClient(ctx, config.AnthropicAPIKey)
+	anthropicClient := anthropic.NewClient(ctx, config.AnthropicAPIKey)
 	geminiClient := google.NewClient(ctx, config.GeminiAPIKey)
 
 	router := genevieve.NewRouter()
 	router.Register(openaiClient)
-	// router.Register(anthropicClient)
+	router.Register(anthropicClient)
 	router.Register(geminiClient)
 
 	assistant := genevieve.NewGenevieve(router)
