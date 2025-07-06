@@ -11,16 +11,24 @@ import (
 
 var _ genevieve.LLM = Client{}
 
-var model = openai.ChatModelGPT4o
+var defaultModel = openai.ChatModelGPT4o
 
 type Client struct {
-	ctx    context.Context
-	client *openai.Client
+	ctx     context.Context
+	client  *openai.Client
+	options genevieve.LLMOptions
 }
 
-func NewClient(ctx context.Context, apiKey string) *Client {
+func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) *Client {
 	client := openai.NewClient(option.WithAPIKey(apiKey))
-	return &Client{ctx: ctx, client: &client}
+	c := &Client{ctx: ctx, client: &client}
+	for _, opt := range opts {
+		opt(&c.options)
+	}
+	if c.options.Model == "" {
+		c.options.Model = defaultModel
+	}
+	return c
 }
 
 func (c Client) Name() string {
@@ -45,7 +53,7 @@ func (c Client) Chat(messages []genevieve.Message) (string, error) {
 		c.ctx,
 		openai.ChatCompletionNewParams{
 			Messages: messageParamUnion,
-			Model:    model,
+			Model:    c.options.Model,
 		},
 	)
 	if err != nil {
@@ -62,11 +70,11 @@ func (c Client) Complete(prompt string) (string, error) {
 func (c Client) ChooseTool(
 	question string,
 	toolNames []string,
-) (genevieve.ToolExecutionInput, error) {
+) (genevieve.AgentToolInput, error) {
 	jsonData, err := c.Chat([]genevieve.Message{
 		{
 			Role:    genevieve.RoleSystem,
-			Content: "You're an agent that chooses the right tool to answer a user's question.",
+			Content: genevieve.AgentSystemPrompt(),
 		},
 		{
 			Role:    genevieve.RoleUser,
@@ -74,12 +82,12 @@ func (c Client) ChooseTool(
 		},
 	})
 	if err != nil {
-		return genevieve.ToolExecutionInput{}, err
+		return genevieve.AgentToolInput{}, err
 	}
 
 	resp, err := genevieve.JSONToToolExecutionInput(jsonData)
 	if err != nil {
-		return genevieve.ToolExecutionInput{}, err
+		return genevieve.AgentToolInput{}, err
 	}
 
 	return resp, nil

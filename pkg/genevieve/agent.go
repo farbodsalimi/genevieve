@@ -1,12 +1,18 @@
 package genevieve
 
 import (
+	"encoding/json"
 	"fmt"
 )
 
 type AgentTool interface {
 	Name() string
-	Execute(input ToolExecutionInput) (string, error)
+	Execute(input AgentToolInput) (string, error)
+}
+
+type AgentToolInput struct {
+	ToolName  string `json:"tool"`
+	ToolInput string `json:"input"`
 }
 
 type Agent struct {
@@ -44,4 +50,13 @@ func (a *Agent) Handle(provider string, prompt string) (string, error) {
 	}
 
 	return tool.Execute(toolInput)
+}
+
+func JSONToToolExecutionInput(jsonData string) (AgentToolInput, error) {
+	var ati AgentToolInput
+	err := json.Unmarshal([]byte(jsonData), &ati)
+	if err != nil {
+		return ati, err
+	}
+	return ati, nil
 }

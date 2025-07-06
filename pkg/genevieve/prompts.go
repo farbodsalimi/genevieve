@@ -5,6 +5,10 @@ import (
 	"strings"
 )
 
+func AgentSystemPrompt() string {
+	return "You're an agent that chooses the right tool to answer a user's question."
+}
+
 func AgentChooseToolPrompt(toolNames []string, question string) string {
 	return fmt.Sprintf(`Here are the available tools: %s.
 Question: %s

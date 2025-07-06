@@ -1,12 +1,23 @@
 package genevieve
 
-import "encoding/json"
-
 type LLM interface {
 	Name() string
 	Complete(prompt string) (string, error)
 	Chat(messages []Message) (string, error)
-	ChooseTool(question string, toolNames []string) (ToolExecutionInput, error)
+	ChooseTool(question string, toolNames []string) (AgentToolInput, error)
+}
+
+type LLMOptions struct {
+	APIKey string
+	Model  string
+}
+
+type LLMOption func(*LLMOptions)
+
+func WithModel(model string) func(*LLMOptions) {
+	return func(s *LLMOptions) {
+		s.Model = model
+	}
 }
 
 type Message struct {
@@ -29,18 +40,4 @@ func (r RoleType) IsValid() bool {
 	default:
 		return false
 	}
-}
-
-type ToolExecutionInput struct {
-	ToolName  string `json:"tool"`
-	ToolInput string `json:"input"`
-}
-
-func JSONToToolExecutionInput(jsonData string) (ToolExecutionInput, error) {
-	var tei ToolExecutionInput
-	err := json.Unmarshal([]byte(jsonData), &tei)
-	if err != nil {
-		return tei, err
-	}
-	return tei, nil
 }
