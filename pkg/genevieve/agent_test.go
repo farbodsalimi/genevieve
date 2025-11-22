@@ -41,7 +41,7 @@ func TestRegisterTool_NilTool(t *testing.T) {
 		t.Error("expected error for nil tool, got nil")
 	}
 
-	expectedMsg := "cannot register nil tool"
+	expectedMsg := "failed to register tool: cannot register nil tool"
 	if err.Error() != expectedMsg {
 		t.Errorf("expected error %q, got %q", expectedMsg, err.Error())
 	}
@@ -57,7 +57,7 @@ func TestRegisterTool_EmptyName(t *testing.T) {
 		t.Error("expected error for empty tool name, got nil")
 	}
 
-	expectedMsg := "tool name cannot be empty"
+	expectedMsg := "failed to register tool: tool name cannot be empty"
 	if err.Error() != expectedMsg {
 		t.Errorf("expected error %q, got %q", expectedMsg, err.Error())
 	}
@@ -79,7 +79,7 @@ func TestRegisterTool_DuplicateTool(t *testing.T) {
 		t.Error("expected error for duplicate tool name, got nil")
 	}
 
-	expectedMsg := `tool "calculator" is already registered`
+	expectedMsg := `failed to register tool "calculator": tool is already registered`
 	if err.Error() != expectedMsg {
 		t.Errorf("expected error %q, got %q", expectedMsg, err.Error())
 	}

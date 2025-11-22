@@ -2,7 +2,6 @@ package genevieve
 
 import (
 	"context"
-	"fmt"
 	"sync"
 )
 
@@ -19,8 +18,7 @@ func NewGenevieve(router *Router) *Genevieve {
 func (g *Genevieve) Ask(ctx context.Context, provider string, prompt string) (string, error) {
 	llm, ok := g.router.Get(provider)
 	if !ok {
-		// TODO: Use structured error types instead of fmt.Errorf
-		return "", fmt.Errorf("provider %s not found", provider)
+		return "", NewProviderNotFoundError(provider)
 	}
 	return llm.Complete(ctx, prompt)
 }
