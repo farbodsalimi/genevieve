@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -45,10 +46,11 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	openaiClient := openai.NewClient(ctx, config.OpenAIAPIKey)
-	anthropicClient := anthropic.NewClient(ctx, config.AnthropicAPIKey)
+	openaiClient := openai.NewClient(config.OpenAIAPIKey)
+	anthropicClient := anthropic.NewClient(config.AnthropicAPIKey)
 	geminiClient := google.NewClient(ctx, config.GeminiAPIKey)
 
 	router := genevieve.NewRouter()
@@ -65,14 +67,14 @@ func main() {
 	)
 
 	// Ask a specific provider
-	resp, err := assistant.Ask(openaiClient.Name(), prompt)
+	resp, err := assistant.Ask(ctx, openaiClient.Name(), prompt)
 	if err != nil {
 		log.Fatalf("OpenAI errored out: %s", err.Error())
 	}
 	log.Infof("OpenAI answered: %s", resp)
 
 	// Ask all providers
-	results := assistant.AskAll(prompt)
+	results := assistant.AskAll(ctx, prompt)
 	for provider, result := range results {
 		log.Fatalf("[%s]: %s\n", provider, result)
 	}

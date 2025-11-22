@@ -1,6 +1,10 @@
 package tools
 
-import "github.com/farbodsalimi/genevieve/pkg/genevieve"
+import (
+	"context"
+
+	"github.com/farbodsalimi/genevieve/pkg/genevieve"
+)
 
 var _ genevieve.AgentTool = Echo{}
 
@@ -14,6 +18,6 @@ func (e Echo) Name() string {
 	return "echo"
 }
 
-func (e Echo) Execute(input genevieve.AgentToolInput) (string, error) {
+func (e Echo) Execute(ctx context.Context, input genevieve.AgentToolInput) (string, error) {
 	return "Echo: " + input.ToolInput, nil
 }

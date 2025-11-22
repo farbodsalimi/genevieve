@@ -14,7 +14,6 @@ var _ genevieve.LLM = Client{}
 var defaultModel = anthropic_sdk.ModelClaudeSonnet4_20250514
 
 type Client struct {
-	ctx     context.Context
 	client  *anthropic_sdk.Client
 	options genevieve.LLMOptions
 }
@@ -23,7 +22,7 @@ func (c Client) Name() string {
 	return "claude"
 }
 
-func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) *Client {
+func NewClient(apiKey string, opts ...genevieve.LLMOption) *Client {
 	client := anthropic_sdk.NewClient(option.WithAPIKey(apiKey))
 	c := &Client{client: &client}
 	for _, opt := range opts {
@@ -35,7 +34,7 @@ func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) 
 	return c
 }
 
-func (c Client) Chat(messages []genevieve.Message) (string, error) {
+func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string, error) {
 	var messageParam []anthropic_sdk.MessageParam
 
 	for _, msg := range messages {
@@ -55,7 +54,7 @@ func (c Client) Chat(messages []genevieve.Message) (string, error) {
 	}
 
 	message, err := c.client.Messages.New(
-		c.ctx,
+		ctx,
 		anthropic_sdk.MessageNewParams{
 			MaxTokens: 1024,
 			Messages:  messageParam,
@@ -68,15 +67,16 @@ func (c Client) Chat(messages []genevieve.Message) (string, error) {
 	return message.Content[0].Text, err
 }
 
-func (c Client) Complete(prompt string) (string, error) {
-	return c.Chat([]genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
+func (c Client) Complete(ctx context.Context, prompt string) (string, error) {
+	return c.Chat(ctx, []genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
 }
 
 func (c Client) ChooseTool(
+	ctx context.Context,
 	question string,
 	toolNames []string,
 ) (genevieve.AgentToolInput, error) {
-	jsonData, err := c.Chat([]genevieve.Message{
+	jsonData, err := c.Chat(ctx, []genevieve.Message{
 		{
 			Role:    genevieve.RoleSystem,
 			Content: genevieve.AgentSystemPrompt(),

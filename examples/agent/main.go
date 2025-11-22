@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"runtime/debug"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -44,10 +45,11 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	// Create a new OpenAI client
-	openaiClient := openai.NewClient(ctx, config.OpenAIAPIKey, genevieve.WithModel("gpt-4o"))
+	openaiClient := openai.NewClient(config.OpenAIAPIKey, genevieve.WithModel("gpt-4o"))
 
 	// Register OpenAI as a router
 	router := genevieve.NewRouter()
@@ -64,7 +66,7 @@ func main() {
 	}
 
 	for _, q := range questions {
-		a, err := myAgent.Handle(openaiClient.Name(), q)
+		a, err := myAgent.Handle(ctx, openaiClient.Name(), q)
 		if err != nil {
 			log.Errorf("Question %s errored out: %v", q, err)
 			continue

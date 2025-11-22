@@ -1,10 +1,13 @@
 package genevieve
 
+import "context"
+
+// TODO: Consider returning structured Result type with metadata instead of plain strings
 type LLM interface {
 	Name() string
-	Complete(prompt string) (string, error)
-	Chat(messages []Message) (string, error)
-	ChooseTool(question string, toolNames []string) (AgentToolInput, error)
+	Complete(ctx context.Context, prompt string) (string, error)
+	Chat(ctx context.Context, messages []Message) (string, error)
+	ChooseTool(ctx context.Context, question string, toolNames []string) (AgentToolInput, error)
 }
 
 type LLMOptions struct {
