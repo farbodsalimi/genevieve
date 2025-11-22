@@ -3,7 +3,6 @@ package genevieve
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 )
 
 type AgentTool interface {
@@ -27,16 +26,16 @@ func NewAgent(router *Router) *Agent {
 
 func (a *Agent) RegisterTool(tool AgentTool) error {
 	if tool == nil {
-		return fmt.Errorf("cannot register nil tool")
+		return NewNilToolError()
 	}
 
 	name := tool.Name()
 	if name == "" {
-		return fmt.Errorf("tool name cannot be empty")
+		return NewEmptyToolNameError()
 	}
 
 	if _, exists := a.tools[name]; exists {
-		return fmt.Errorf("tool %q is already registered", name)
+		return NewDuplicateToolError(name)
 	}
 
 	a.tools[name] = tool
@@ -65,8 +64,7 @@ func (a *Agent) TryRegisterTool(tool AgentTool) {
 func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (string, error) {
 	llm, ok := a.router.Get(provider)
 	if !ok {
-		// TODO: Use structured error types instead of fmt.Errorf
-		return "", fmt.Errorf("provider %s not found", provider)
+		return "", NewProviderNotFoundError(provider)
 	}
 
 	toolNames := make([]string, 0, len(a.tools))
@@ -81,8 +79,7 @@ func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (str
 
 	tool, ok := a.tools[toolInput.ToolName]
 	if !ok {
-		// TODO: Use structured error types instead of fmt.Errorf
-		return "", fmt.Errorf("Unknown tool: %s", toolInput.ToolName)
+		return "", NewToolNotFoundError(toolInput.ToolName)
 	}
 
 	return tool.Execute(ctx, toolInput)
