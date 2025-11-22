@@ -35,7 +35,8 @@ func (g *Genevieve) AskAll(ctx context.Context, prompt string) map[string]string
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	for name, llm := range g.router.providers {
+	providers := g.router.GetAll()
+	for name, llm := range providers {
 		wg.Add(1)
 		go func(name string, llm LLM) {
 			defer wg.Done()
