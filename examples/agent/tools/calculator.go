@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -21,7 +22,7 @@ func (c Calculator) Name() string {
 	return "calculator"
 }
 
-func (c Calculator) Execute(input genevieve.AgentToolInput) (string, error) {
+func (c Calculator) Execute(ctx context.Context, input genevieve.AgentToolInput) (string, error) {
 	parts := strings.Split(input.ToolInput, "+")
 	if len(parts) != 2 {
 		return "", errors.New("only support 'a + b'")

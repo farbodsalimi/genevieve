@@ -1,13 +1,14 @@
 package genevieve
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 )
 
 type AgentTool interface {
 	Name() string
-	Execute(input AgentToolInput) (string, error)
+	Execute(ctx context.Context, input AgentToolInput) (string, error)
 }
 
 type AgentToolInput struct {
@@ -24,13 +25,47 @@ func NewAgent(router *Router) *Agent {
 	return &Agent{router: router, tools: make(map[string]AgentTool)}
 }
 
-func (a *Agent) RegisterTool(tool AgentTool) {
-	a.tools[tool.Name()] = tool
+func (a *Agent) RegisterTool(tool AgentTool) error {
+	if tool == nil {
+		return fmt.Errorf("cannot register nil tool")
+	}
+
+	name := tool.Name()
+	if name == "" {
+		return fmt.Errorf("tool name cannot be empty")
+	}
+
+	if _, exists := a.tools[name]; exists {
+		return fmt.Errorf("tool %q is already registered", name)
+	}
+
+	a.tools[name] = tool
+	return nil
 }
 
-func (a *Agent) Handle(provider string, prompt string) (string, error) {
+func (a *Agent) TryRegisterTool(tool AgentTool) {
+	if tool == nil {
+		return
+	}
+
+	name := tool.Name()
+	if name == "" {
+		return
+	}
+
+	if _, exists := a.tools[name]; exists {
+		return
+	}
+
+	a.tools[name] = tool
+}
+
+// TODO: Add support for tool chaining - agents can only use one tool per request
+// TODO: Add structured logging for agent operations
+func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (string, error) {
 	llm, ok := a.router.Get(provider)
 	if !ok {
+		// TODO: Use structured error types instead of fmt.Errorf
 		return "", fmt.Errorf("provider %s not found", provider)
 	}
 
@@ -39,17 +74,18 @@ func (a *Agent) Handle(provider string, prompt string) (string, error) {
 		toolNames = append(toolNames, name)
 	}
 
-	toolInput, err := llm.ChooseTool(prompt, toolNames)
+	toolInput, err := llm.ChooseTool(ctx, prompt, toolNames)
 	if err != nil {
 		return "", err
 	}
 
 	tool, ok := a.tools[toolInput.ToolName]
 	if !ok {
+		// TODO: Use structured error types instead of fmt.Errorf
 		return "", fmt.Errorf("Unknown tool: %s", toolInput.ToolName)
 	}
 
-	return tool.Execute(toolInput)
+	return tool.Execute(ctx, toolInput)
 }
 
 func JSONToToolExecutionInput(jsonData string) (AgentToolInput, error) {

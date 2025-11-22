@@ -15,8 +15,8 @@ With Genevieve, developers can:
 ```go
 ctx := context.Background()
 
-openaiClient := openai.NewClient(ctx, "xxx")
-anthropicClient := anthropic.NewClient(ctx, "xxx")
+openaiClient := openai.NewClient("xxx")
+anthropicClient := anthropic.NewClient("xxx")
 geminiClient := google.NewClient(ctx, "xxx")
 
 router := genevieve.NewRouter()
@@ -25,7 +25,7 @@ router.Register(anthropicClient)
 router.Register(geminiClient)
 
 gen := genevieve.NewGenevieve(router)
-results := gen.AskAll("When did human life first appear on Earth?")
+results := gen.AskAll(ctx, "When did human life first appear on Earth?")
 ```
 
 ### AI Agents
@@ -33,13 +33,21 @@ results := gen.AskAll("When did human life first appear on Earth?")
 ```go
 ctx := context.Background()
 
-openaiClient := openai.NewClient(ctx, "sk-xxx", genevieve.WithModel("gpt-4o"))
+openaiClient := openai.NewClient("sk-xxx", genevieve.WithModel("gpt-4o"))
 
 router := genevieve.NewRouter()
 router.Register(openaiClient)
 
 myAgent := genevieve.NewAgent(router)
-myAgent.RegisterTool(tools.NewCalculator())
-answer, _ := myAgent.Handle(openaiClient.Name(), "What is 4 + 5?")
+
+// Option 1: Register with error handling
+if err := myAgent.RegisterTool(tools.NewCalculator()); err != nil {
+	log.Fatal(err)
+}
+
+// Option 2: Register silently (ignores invalid tools)
+myAgent.TryRegisterTool(tools.NewCalculator())
+
+answer, _ := myAgent.Handle(ctx, openaiClient.Name(), "What is 4 + 5?")
 ```
 

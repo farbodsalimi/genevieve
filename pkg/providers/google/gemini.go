@@ -13,7 +13,6 @@ var _ genevieve.LLM = Client{}
 const defaultModel = "gemini-2.0-flash"
 
 type Client struct {
-	ctx     context.Context
 	client  *genai.Client
 	options genevieve.LLMOptions
 }
@@ -27,7 +26,7 @@ func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) 
 		panic(err)
 	}
 
-	c := &Client{ctx: ctx, client: client}
+	c := &Client{client: client}
 	for _, opt := range opts {
 		opt(&c.options)
 	}
@@ -41,7 +40,7 @@ func (c Client) Name() string {
 	return "gemini"
 }
 
-func (c Client) Chat(messages []genevieve.Message) (string, error) {
+func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string, error) {
 	content := []*genai.Content{}
 	for _, msg := range messages {
 		content = append(
@@ -53,7 +52,7 @@ func (c Client) Chat(messages []genevieve.Message) (string, error) {
 		)
 	}
 	result, err := c.client.Models.GenerateContent(
-		c.ctx,
+		ctx,
 		c.options.Model,
 		content,
 		nil,
@@ -61,16 +60,17 @@ func (c Client) Chat(messages []genevieve.Message) (string, error) {
 	return result.Text(), err
 }
 
-func (c Client) Complete(prompt string) (string, error) {
-	result, err := c.Chat([]genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
+func (c Client) Complete(ctx context.Context, prompt string) (string, error) {
+	result, err := c.Chat(ctx, []genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
 	return result, err
 }
 
 func (c Client) ChooseTool(
+	ctx context.Context,
 	question string,
 	toolNames []string,
 ) (genevieve.AgentToolInput, error) {
-	jsonData, err := c.Chat([]genevieve.Message{
+	jsonData, err := c.Chat(ctx, []genevieve.Message{
 		{
 			Role:    genevieve.RoleSystem,
 			Content: genevieve.AgentSystemPrompt(),
