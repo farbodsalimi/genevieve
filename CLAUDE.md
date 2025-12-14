@@ -31,19 +31,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Central registry for LLM providers
 - Maps provider names to LLM implementations
-- Currently not thread-safe - see TODO comments
+- Thread-safe with mutex protection for concurrent access
 
 **Provider Interface** (`pkg/genevieve/model.go`):
 
 - `LLM` interface defines contract for all providers
-- Three main methods: `Complete()`, `Chat()`, `ChooseTool()`
+- Three main methods: `Complete()`, `Chat()`, `ChooseTool()` - all support context for cancellation/timeouts
 - Implementations in `pkg/providers/` for OpenAI, Anthropic, Google
+- Structured error types for different failure scenarios
 
 **Agent System** (`pkg/genevieve/agent.go`):
 
 - Autonomous agents that can use tools
 - Single tool execution per request (no chaining yet)
 - Tool selection via LLM reasoning
+- Context propagation through all agent operations
 
 **Main API** (`pkg/genevieve/gen.go`):
 
@@ -96,11 +98,10 @@ examples/                # Usage examples
 
 ### Current Limitations (See TODO.md)
 
-- No context support (cancellation/timeouts)
-- Not thread-safe
-- Single tool execution per agent request
+- Single tool execution per agent request (no chaining)
 - Plain string responses (no metadata)
-- No structured error types
+- No structured logging or observability
+- No retry logic or rate limiting
 
 ### Testing Strategy
 
