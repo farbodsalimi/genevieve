@@ -1,6 +1,6 @@
 module github.com/farbodsalimi/genevieve
 
-go 1.24.2
+go 1.26
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.19.0

@@ -2,12 +2,16 @@ package genevieve
 
 import "context"
 
-// TODO: Consider returning structured Result type with metadata instead of plain strings
 type LLM interface {
 	Name() string
 	Complete(ctx context.Context, prompt string) (string, error)
 	Chat(ctx context.Context, messages []Message) (string, error)
-	ChooseTool(ctx context.Context, question string, toolNames []string) (AgentToolInput, error)
+}
+
+// Result holds the response from a single provider in a multi-provider query.
+type Result struct {
+	Response string
+	Err      error
 }
 
 type LLMOptions struct {
