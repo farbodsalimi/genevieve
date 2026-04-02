@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -56,7 +57,11 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 		},
 	)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("openai chat: %w", err)
+	}
+
+	if len(chatCompletion.Choices) == 0 {
+		return "", fmt.Errorf("openai chat: empty choices in response")
 	}
 
 	return chatCompletion.Choices[0].Message.Content, nil
@@ -82,12 +87,12 @@ func (c Client) ChooseTool(
 		},
 	})
 	if err != nil {
-		return genevieve.AgentToolInput{}, err
+		return genevieve.AgentToolInput{}, fmt.Errorf("openai choose tool: %w", err)
 	}
 
 	resp, err := genevieve.JSONToToolExecutionInput(jsonData)
 	if err != nil {
-		return genevieve.AgentToolInput{}, err
+		return genevieve.AgentToolInput{}, fmt.Errorf("openai choose tool: parse response: %w", err)
 	}
 
 	return resp, nil

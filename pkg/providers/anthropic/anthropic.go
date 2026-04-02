@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"context"
+	"fmt"
 
 	anthropic_sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -36,6 +37,7 @@ func NewClient(apiKey string, opts ...genevieve.LLMOption) *Client {
 
 func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string, error) {
 	var messageParam []anthropic_sdk.MessageParam
+	var systemBlocks []anthropic_sdk.TextBlockParam
 
 	for _, msg := range messages {
 		switch msg.Role {
@@ -45,6 +47,9 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 				anthropic_sdk.NewUserMessage(anthropic_sdk.NewTextBlock(msg.Content)),
 			)
 		case genevieve.RoleSystem:
+			systemBlocks = append(systemBlocks, anthropic_sdk.TextBlockParam{
+				Text: msg.Content,
+			})
 		case genevieve.RoleAssistant:
 			messageParam = append(
 				messageParam,
@@ -53,18 +58,25 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 		}
 	}
 
-	message, err := c.client.Messages.New(
-		ctx,
-		anthropic_sdk.MessageNewParams{
-			MaxTokens: 1024,
-			Messages:  messageParam,
-			Model:     anthropic_sdk.Model(c.options.Model),
-		})
-	if err != nil {
-		panic(err.Error())
+	params := anthropic_sdk.MessageNewParams{
+		MaxTokens: 1024,
+		Messages:  messageParam,
+		Model:     anthropic_sdk.Model(c.options.Model),
+	}
+	if len(systemBlocks) > 0 {
+		params.System = systemBlocks
 	}
 
-	return message.Content[0].Text, err
+	message, err := c.client.Messages.New(ctx, params)
+	if err != nil {
+		return "", fmt.Errorf("anthropic chat: %w", err)
+	}
+
+	if len(message.Content) == 0 {
+		return "", fmt.Errorf("anthropic chat: empty response content")
+	}
+
+	return message.Content[0].Text, nil
 }
 
 func (c Client) Complete(ctx context.Context, prompt string) (string, error) {
@@ -87,12 +99,12 @@ func (c Client) ChooseTool(
 		},
 	})
 	if err != nil {
-		return genevieve.AgentToolInput{}, err
+		return genevieve.AgentToolInput{}, fmt.Errorf("anthropic choose tool: %w", err)
 	}
 
 	resp, err := genevieve.JSONToToolExecutionInput(jsonData)
 	if err != nil {
-		return genevieve.AgentToolInput{}, err
+		return genevieve.AgentToolInput{}, fmt.Errorf("anthropic choose tool: parse response: %w", err)
 	}
 
 	return resp, nil

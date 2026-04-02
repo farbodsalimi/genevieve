@@ -1,6 +1,7 @@
 package genevieve
 
 import (
+	"maps"
 	"sync"
 )
 
@@ -44,8 +45,6 @@ func (r *Router) GetAll() map[string]LLM {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	providers := make(map[string]LLM, len(r.providers))
-	for name, llm := range r.providers {
-		providers[name] = llm
-	}
+	maps.Copy(providers, r.providers)
 	return providers
 }

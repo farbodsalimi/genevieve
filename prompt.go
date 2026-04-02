@@ -10,7 +10,7 @@ import (
 // TODO: Add structured logging for prompt generation operations
 type PromptGenerator interface {
 	GetPrompt(ctx context.Context) string
-	GenerateJSON(ctx context.Context, v interface{}) ([]byte, error)
+	GenerateJSON(ctx context.Context, v any) ([]byte, error)
 }
 
 // SimplePromptGenerator is a basic implementation of PromptGenerator.
@@ -24,7 +24,7 @@ func (s *SimplePromptGenerator) GetPrompt(ctx context.Context) string {
 }
 
 // GenerateJSON generates a JSON representation of the given data.
-func (s *SimplePromptGenerator) GenerateJSON(ctx context.Context, v interface{}) ([]byte, error) {
+func (s *SimplePromptGenerator) GenerateJSON(ctx context.Context, v any) ([]byte, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate json: %w", err)

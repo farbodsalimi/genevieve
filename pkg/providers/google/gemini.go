@@ -2,6 +2,7 @@ package google
 
 import (
 	"context"
+	"fmt"
 
 	"google.golang.org/genai"
 
@@ -17,13 +18,13 @@ type Client struct {
 	options genevieve.LLMOptions
 }
 
-func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) *Client {
+func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) (*Client, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("gemini client init: %w", err)
 	}
 
 	c := &Client{client: client}
@@ -33,7 +34,7 @@ func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) 
 	if c.options.Model == "" {
 		c.options.Model = defaultModel
 	}
-	return c
+	return c, nil
 }
 
 func (c Client) Name() string {
@@ -57,7 +58,11 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 		content,
 		nil,
 	)
-	return result.Text(), err
+	if err != nil {
+		return "", fmt.Errorf("gemini chat: %w", err)
+	}
+
+	return result.Text(), nil
 }
 
 func (c Client) Complete(ctx context.Context, prompt string) (string, error) {
@@ -81,12 +86,12 @@ func (c Client) ChooseTool(
 		},
 	})
 	if err != nil {
-		return genevieve.AgentToolInput{}, err
+		return genevieve.AgentToolInput{}, fmt.Errorf("gemini choose tool: %w", err)
 	}
 
 	resp, err := genevieve.JSONToToolExecutionInput(jsonData)
 	if err != nil {
-		return genevieve.AgentToolInput{}, err
+		return genevieve.AgentToolInput{}, fmt.Errorf("gemini choose tool: parse response: %w", err)
 	}
 
 	return resp, nil
