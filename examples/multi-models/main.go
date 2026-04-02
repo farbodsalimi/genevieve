@@ -8,15 +8,13 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
-	"github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/farbodsalimi/genevieve/pkg/genevieve"
 	"github.com/farbodsalimi/genevieve/pkg/providers/anthropic"
 	"github.com/farbodsalimi/genevieve/pkg/providers/google"
 	"github.com/farbodsalimi/genevieve/pkg/providers/openai"
 )
-
-var log = logging.MustGetLogger("example")
 
 const (
 	app     = "genevieve"
@@ -49,9 +47,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	openaiClient := openai.NewClient(config.OpenAIAPIKey)
-	anthropicClient := anthropic.NewClient(config.AnthropicAPIKey)
-	geminiClient := google.NewClient(ctx, config.GeminiAPIKey)
+	openaiClient, _ := openai.NewClient(ctx, config.OpenAIAPIKey)
+	anthropicClient, _ := anthropic.NewClient(ctx, config.AnthropicAPIKey)
+	geminiClient, _ := google.NewClient(ctx, config.GeminiAPIKey)
 
 	router := genevieve.NewRouter()
 	router.Register(openaiClient)
@@ -76,7 +74,7 @@ func main() {
 	// Ask all providers
 	results := assistant.AskAll(ctx, prompt)
 	for provider, result := range results {
-		log.Fatalf("[%s]: %s\n", provider, result)
+		log.Infof("[%s]: response %s err %v", provider, result.Response, result.Err)
 	}
 }
 

@@ -15,9 +15,9 @@ With Genevieve, developers can:
 ```go
 ctx := context.Background()
 
-openaiClient := openai.NewClient("xxx")
-anthropicClient := anthropic.NewClient("xxx")
-geminiClient := google.NewClient(ctx, "xxx")
+openaiClient, _ := openai.NewClient(ctx, "xxx")
+anthropicClient, _ := anthropic.NewClient(ctx, "xxx")
+geminiClient, _ := google.NewClient(ctx, "xxx")
 
 router := genevieve.NewRouter()
 router.Register(openaiClient)
@@ -33,7 +33,7 @@ results := gen.AskAll(ctx, "When did human life first appear on Earth?")
 ```go
 ctx := context.Background()
 
-openaiClient := openai.NewClient("sk-xxx", genevieve.WithModel("gpt-4o"))
+openaiClient, _ := openai.NewClient(ctx, "sk-xxx", genevieve.WithModel("gpt-4o"))
 
 router := genevieve.NewRouter()
 router.Register(openaiClient)

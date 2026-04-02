@@ -7,15 +7,13 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
-	"github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/farbodsalimi/genevieve/pkg/genevieve"
 	"github.com/farbodsalimi/genevieve/pkg/providers/openai"
 
 	"github.com/farbodsalimi/genevieve/examples/agent/tools"
 )
-
-var log = logging.MustGetLogger("example")
 
 const (
 	app     = "genevieve"
@@ -49,7 +47,7 @@ func main() {
 	defer cancel()
 
 	// Create a new OpenAI client
-	openaiClient := openai.NewClient(config.OpenAIAPIKey, genevieve.WithModel("gpt-4o"))
+	openaiClient, _ := openai.NewClient(ctx, config.OpenAIAPIKey, genevieve.WithModel("gpt-4o"))
 
 	// Register OpenAI as a router
 	router := genevieve.NewRouter()

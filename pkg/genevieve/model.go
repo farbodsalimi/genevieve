@@ -15,8 +15,9 @@ type Result struct {
 }
 
 type LLMOptions struct {
-	APIKey string
-	Model  string
+	APIKey    string
+	Model     string
+	MaxTokens int
 }
 
 type LLMOption func(*LLMOptions)
@@ -24,6 +25,12 @@ type LLMOption func(*LLMOptions)
 func WithModel(model string) func(*LLMOptions) {
 	return func(s *LLMOptions) {
 		s.Model = model
+	}
+}
+
+func WithMaxTokens(maxTokens int) func(*LLMOptions) {
+	return func(s *LLMOptions) {
+		s.MaxTokens = maxTokens
 	}
 }
 
