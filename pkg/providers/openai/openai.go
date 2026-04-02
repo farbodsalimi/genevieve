@@ -19,7 +19,7 @@ type Client struct {
 	options genevieve.LLMOptions
 }
 
-func NewClient(apiKey string, opts ...genevieve.LLMOption) *Client {
+func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) (*Client, error) {
 	client := openai.NewClient(option.WithAPIKey(apiKey))
 	c := &Client{client: &client}
 	for _, opt := range opts {
@@ -28,7 +28,7 @@ func NewClient(apiKey string, opts ...genevieve.LLMOption) *Client {
 	if c.options.Model == "" {
 		c.options.Model = defaultModel
 	}
-	return c
+	return c, nil
 }
 
 func (c Client) Name() string {

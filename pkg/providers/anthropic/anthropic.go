@@ -23,7 +23,7 @@ func (c Client) Name() string {
 	return "claude"
 }
 
-func NewClient(apiKey string, opts ...genevieve.LLMOption) *Client {
+func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) (*Client, error) {
 	client := anthropic_sdk.NewClient(option.WithAPIKey(apiKey))
 	c := &Client{client: &client}
 	for _, opt := range opts {
@@ -32,7 +32,10 @@ func NewClient(apiKey string, opts ...genevieve.LLMOption) *Client {
 	if c.options.Model == "" {
 		c.options.Model = string(defaultModel)
 	}
-	return c
+	if c.options.MaxTokens == 0 {
+		c.options.MaxTokens = 1024
+	}
+	return c, nil
 }
 
 func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string, error) {
@@ -61,7 +64,7 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 	}
 
 	params := anthropic_sdk.MessageNewParams{
-		MaxTokens: 1024,
+		MaxTokens: int64(c.options.MaxTokens),
 		Messages:  messageParam,
 		Model:     anthropic_sdk.Model(c.options.Model),
 	}

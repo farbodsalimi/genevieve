@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 )
 
 type AgentTool interface {
@@ -17,6 +18,7 @@ type AgentToolInput struct {
 }
 
 type Agent struct {
+	mu     sync.RWMutex
 	router *Router
 	tools  map[string]AgentTool
 }
@@ -34,6 +36,9 @@ func (a *Agent) RegisterTool(tool AgentTool) error {
 	if name == "" {
 		return NewEmptyToolNameError()
 	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
 	if _, exists := a.tools[name]; exists {
 		return NewDuplicateToolError(name)
@@ -53,6 +58,9 @@ func (a *Agent) TryRegisterTool(tool AgentTool) {
 		return
 	}
 
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if _, exists := a.tools[name]; exists {
 		return
 	}
@@ -66,17 +74,21 @@ func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (str
 		return "", NewProviderNotFoundError(provider)
 	}
 
+	a.mu.RLock()
 	toolNames := make([]string, 0, len(a.tools))
 	for name := range a.tools {
 		toolNames = append(toolNames, name)
 	}
+	a.mu.RUnlock()
 
 	toolInput, err := a.chooseTool(ctx, llm, prompt, toolNames)
 	if err != nil {
 		return "", fmt.Errorf("agent handle: %w", err)
 	}
 
+	a.mu.RLock()
 	tool, ok := a.tools[toolInput.ToolName]
+	a.mu.RUnlock()
 	if !ok {
 		return "", NewToolNotFoundError(toolInput.ToolName)
 	}
