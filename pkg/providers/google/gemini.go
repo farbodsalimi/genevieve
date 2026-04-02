@@ -42,12 +42,21 @@ func (c Client) Name() string {
 }
 
 func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string, error) {
-	content := []*genai.Content{}
+	var content []*genai.Content
 	for _, msg := range messages {
+		var role string
+		switch msg.Role {
+		case genevieve.RoleUser, genevieve.RoleSystem:
+			role = "user"
+		case genevieve.RoleAssistant:
+			role = "model"
+		default:
+			return "", fmt.Errorf("gemini chat: %w", genevieve.NewInvalidRoleError(msg.Role))
+		}
 		content = append(
 			content,
 			&genai.Content{
-				Role:  string(msg.Role),
+				Role:  role,
 				Parts: []*genai.Part{{Text: msg.Content}},
 			},
 		)
@@ -66,33 +75,5 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 }
 
 func (c Client) Complete(ctx context.Context, prompt string) (string, error) {
-	result, err := c.Chat(ctx, []genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
-	return result, err
-}
-
-func (c Client) ChooseTool(
-	ctx context.Context,
-	question string,
-	toolNames []string,
-) (genevieve.AgentToolInput, error) {
-	jsonData, err := c.Chat(ctx, []genevieve.Message{
-		{
-			Role:    genevieve.RoleSystem,
-			Content: genevieve.AgentSystemPrompt(),
-		},
-		{
-			Role:    genevieve.RoleUser,
-			Content: genevieve.AgentChooseToolPrompt(toolNames, question),
-		},
-	})
-	if err != nil {
-		return genevieve.AgentToolInput{}, fmt.Errorf("gemini choose tool: %w", err)
-	}
-
-	resp, err := genevieve.JSONToToolExecutionInput(jsonData)
-	if err != nil {
-		return genevieve.AgentToolInput{}, fmt.Errorf("gemini choose tool: parse response: %w", err)
-	}
-
-	return resp, nil
+	return c.Chat(ctx, []genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
 }

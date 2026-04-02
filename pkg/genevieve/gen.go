@@ -24,12 +24,8 @@ func (g *Genevieve) Ask(ctx context.Context, provider string, prompt string) (st
 }
 
 // Broadcast to all providers (parallel fan-out)
-// TODO: Return structured responses with metadata instead of plain strings
-// TODO: Add retry logic for failed requests
-// TODO: Add rate limiting for provider calls
-// TODO: Add structured logging for observability
-func (g *Genevieve) AskAll(ctx context.Context, prompt string) map[string]string {
-	results := make(map[string]string)
+func (g *Genevieve) AskAll(ctx context.Context, prompt string) map[string]Result {
+	results := make(map[string]Result)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
@@ -40,12 +36,7 @@ func (g *Genevieve) AskAll(ctx context.Context, prompt string) map[string]string
 			defer wg.Done()
 			resp, err := llm.Complete(ctx, prompt)
 			mu.Lock()
-			if err != nil {
-				// TODO: Use structured error types instead of plain strings
-				results[name] = "error: " + err.Error()
-			} else {
-				results[name] = resp
-			}
+			results[name] = Result{Response: resp, Err: err}
 			mu.Unlock()
 		}(name, llm)
 	}

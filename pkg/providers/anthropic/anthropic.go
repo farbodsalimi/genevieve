@@ -55,6 +55,8 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 				messageParam,
 				anthropic_sdk.NewAssistantMessage(anthropic_sdk.NewTextBlock(msg.Content)),
 			)
+		default:
+			return "", fmt.Errorf("anthropic chat: %w", genevieve.NewInvalidRoleError(msg.Role))
 		}
 	}
 
@@ -81,31 +83,4 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 
 func (c Client) Complete(ctx context.Context, prompt string) (string, error) {
 	return c.Chat(ctx, []genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
-}
-
-func (c Client) ChooseTool(
-	ctx context.Context,
-	question string,
-	toolNames []string,
-) (genevieve.AgentToolInput, error) {
-	jsonData, err := c.Chat(ctx, []genevieve.Message{
-		{
-			Role:    genevieve.RoleSystem,
-			Content: genevieve.AgentSystemPrompt(),
-		},
-		{
-			Role:    genevieve.RoleUser,
-			Content: genevieve.AgentChooseToolPrompt(toolNames, question),
-		},
-	})
-	if err != nil {
-		return genevieve.AgentToolInput{}, fmt.Errorf("anthropic choose tool: %w", err)
-	}
-
-	resp, err := genevieve.JSONToToolExecutionInput(jsonData)
-	if err != nil {
-		return genevieve.AgentToolInput{}, fmt.Errorf("anthropic choose tool: parse response: %w", err)
-	}
-
-	return resp, nil
 }

@@ -14,12 +14,25 @@ func NewRouter() *Router {
 	return &Router{providers: make(map[string]LLM)}
 }
 
-// TODO: Add validation to prevent duplicate provider registrations
-// TODO: Add validation for nil LLM or empty provider names
-func (r *Router) Register(llm LLM) {
+func (r *Router) Register(llm LLM) error {
+	if llm == nil {
+		return NewNilProviderError()
+	}
+
+	name := llm.Name()
+	if name == "" {
+		return NewEmptyProviderNameError()
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.providers[llm.Name()] = llm
+
+	if _, exists := r.providers[name]; exists {
+		return NewDuplicateProviderError(name)
+	}
+
+	r.providers[name] = llm
+	return nil
 }
 
 func (r *Router) Get(name string) (LLM, bool) {

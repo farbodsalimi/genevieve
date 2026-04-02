@@ -3,6 +3,7 @@ package genevieve
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 )
 
 type AgentTool interface {
@@ -59,8 +60,6 @@ func (a *Agent) TryRegisterTool(tool AgentTool) {
 	a.tools[name] = tool
 }
 
-// TODO: Add support for tool chaining - agents can only use one tool per request
-// TODO: Add structured logging for agent operations
 func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (string, error) {
 	llm, ok := a.router.Get(provider)
 	if !ok {
@@ -72,9 +71,9 @@ func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (str
 		toolNames = append(toolNames, name)
 	}
 
-	toolInput, err := llm.ChooseTool(ctx, prompt, toolNames)
+	toolInput, err := a.chooseTool(ctx, llm, prompt, toolNames)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("agent handle: %w", err)
 	}
 
 	tool, ok := a.tools[toolInput.ToolName]
@@ -85,11 +84,41 @@ func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (str
 	return tool.Execute(ctx, toolInput)
 }
 
+func (a *Agent) chooseTool(
+	ctx context.Context,
+	llm LLM,
+	question string,
+	toolNames []string,
+) (AgentToolInput, error) {
+	jsonData, err := llm.Chat(ctx, []Message{
+		{
+			Role:    RoleSystem,
+			Content: AgentSystemPrompt(),
+		},
+		{
+			Role:    RoleUser,
+			Content: AgentChooseToolPrompt(toolNames, question),
+		},
+	})
+	if err != nil {
+		return AgentToolInput{}, fmt.Errorf("tool selection: %w", err)
+	}
+
+	resp, err := JSONToToolExecutionInput(jsonData)
+	if err != nil {
+		return AgentToolInput{}, fmt.Errorf("tool selection: parse response: %w", err)
+	}
+
+	return resp, nil
+}
+
 func JSONToToolExecutionInput(jsonData string) (AgentToolInput, error) {
 	var ati AgentToolInput
-	err := json.Unmarshal([]byte(jsonData), &ati)
-	if err != nil {
-		return ati, err
+	if err := json.Unmarshal([]byte(jsonData), &ati); err != nil {
+		return ati, fmt.Errorf("unmarshal tool input: %w", err)
+	}
+	if ati.ToolName == "" {
+		return ati, fmt.Errorf("tool input missing required field \"tool\"")
 	}
 	return ati, nil
 }
