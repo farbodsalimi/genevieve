@@ -74,7 +74,7 @@ func main() {
 	// Ask all providers
 	results := assistant.AskAll(ctx, prompt)
 	for provider, result := range results {
-		log.Fatalf("[%s]: %s\n", provider, result)
+		log.Infof("[%s]: response %s err %v", provider, result.Response, result.Err)
 	}
 }
 
