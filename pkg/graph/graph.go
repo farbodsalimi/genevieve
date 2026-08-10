@@ -4,7 +4,8 @@
 // limits the blast radius of a single node's failure and makes each node
 // independently testable.
 //
-// The engine knows nothing about LLMs. The LLM bindings live in pkg/graphllm
+// The engine knows nothing about LLMs. The LLM bindings live in
+// pkg/graph/nodes
 // so this package never imports pkg/llm or pkg/agent.
 package graph
 
@@ -115,7 +116,10 @@ func (b *Builder[T, U]) AddConditionalEdge(from NodeID, r Router[T]) *Builder[T,
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if _, exists := b.conds[from]; exists {
-		b.errs = append(b.errs, NewCompileError("node "+string(from)+" already has a conditional router"))
+		b.errs = append(
+			b.errs,
+			NewCompileError("node "+string(from)+" already has a conditional router"),
+		)
 		return b
 	}
 	b.conds[from] = r

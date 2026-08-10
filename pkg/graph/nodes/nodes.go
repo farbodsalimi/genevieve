@@ -1,8 +1,10 @@
-// Package graphllm adapts genevieve's LLM primitives (pkg/llm, pkg/agent) to the
-// generic graph engine (pkg/graph). The dependency runs one way — graphllm
-// imports llm, agent, and graph — so pkg/graph stays domain-free with no import
-// cycle.
-package graphllm
+// Package nodes adapts the LLM packages to the graph engine. Every export here
+// is a graph.Node constructor; conversation state and its reducer live in
+// pkg/graph/chat.
+//
+// This package imports llm, agent, and graph — never the reverse — so pkg/graph
+// stays domain-free with no import cycle.
+package nodes
 
 import (
 	"context"
@@ -67,35 +69,5 @@ func AgentNode[T any, U any](
 			return zero, err
 		}
 		return wrap(resp), nil
-	})
-}
-
-// ChatState is a batteries-included default state for the common case:
-// conversation history as a slice of llm.Message.
-type ChatState struct {
-	Messages []llm.Message
-}
-
-// Clone deep-copies the message slice so parallel nodes never share the backing
-// array. Detected automatically by the runner.
-func (c ChatState) Clone() ChatState {
-	msgs := make([]llm.Message, len(c.Messages))
-	copy(msgs, c.Messages)
-	return ChatState{Messages: msgs}
-}
-
-// ChatUpdate is a partial update appending one message to the conversation.
-type ChatUpdate struct {
-	Message llm.Message
-}
-
-// ChatReducer appends an update's message to the running conversation,
-// copy-on-write so the previous state is never mutated.
-func ChatReducer() graph.Reducer[ChatState, ChatUpdate] {
-	return graph.ReducerFunc[ChatState, ChatUpdate](func(s ChatState, u ChatUpdate) (ChatState, error) {
-		msgs := make([]llm.Message, len(s.Messages), len(s.Messages)+1)
-		copy(msgs, s.Messages)
-		msgs = append(msgs, u.Message)
-		return ChatState{Messages: msgs}, nil
 	})
 }

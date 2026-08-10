@@ -22,6 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `go run ./examples/multi-models/` - Run multi-provider example
 - `go run ./examples/agent/` - Run agent example
+- `go run ./examples/graph-simple/` - Run the minimal graph example (no API key needed)
 - `go run ./examples/graph/` - Run graph orchestration example (draft→critique→publish loop)
 
 ## Architecture Overview
@@ -29,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Core Components
 
 The code is split into focused packages by concern. Dependencies flow one way:
-`providers` → `llm`; `agent` → `llm`; `graphllm` → `llm` + `agent` + `graph`.
+`providers` → `llm`; `agent` → `llm`; `graph/nodes` → `llm` + `agent` + `graph`.
 `graph` depends on nothing internal, so it stays a domain-free engine.
 
 **LLM Core** (`pkg/llm/`):
@@ -54,16 +55,23 @@ The code is split into focused packages by concern. Dependencies flow one way:
 
 - Generic, domain-free orchestration engine — knows nothing about LLMs
 - `Graph[T, U]` parameterized over caller state `T` and partial update `U`; nodes return deltas merged by a `Reducer`
+- Reducer combinators (`reduce.go`) — `Merge` composes per-field rules (`Set`, `SetIf`, `Append`, `AppendIf`, `Concat`, `Add`, `Or`, `Apply`, predicate `NonZero`) so callers stop hand-writing zero-value-checking merge logic; `Merge` copies state once and `Append`/`Concat` copy slice backing arrays, keeping fan-in safe
 - Two-phase: `Builder.Compile()` runs static analysis (dangling edges, unreachable nodes, dead ends) and returns an immutable `Runner` safe for concurrent reuse
 - Super-step execution: each step runs the active frontier in parallel via `errgroup`, then applies reducers in deterministic node-ID order
 - Supports sequential edges, parallel fan-out/fan-in, conditional/fan routing, bounded loops (recursion limit, not cycle rejection), `Stream`, checkpointing, `MapNode` map-reduce, and panic containment
 - Fail-fast on the first node/router error; caller panics are recovered as `NodePanicError`
 
-**Graph Bindings** (`pkg/graphllm/`):
+**Graph Bindings** (`pkg/graph/nodes/`):
 
 - Adapters wiring the LLM packages into the graph engine: `LLMNode`, `ToolNode`, `AgentNode`
-- `ChatState`/`ChatUpdate`/`ChatReducer` batteries-included conversation default
+- Every export is a `graph.Node` constructor — state types live in `pkg/graph/chat`, not here
 - Imports `llm`, `agent`, and `graph` — never the reverse — so `pkg/graph` stays domain-free with no import cycle
+
+**Chat State** (`pkg/graph/chat/`):
+
+- `State`/`Update`/`Reducer` batteries-included conversation default, for graphs whose state is just `[]llm.Message`
+- State and reducer types, not nodes; a caller with richer state ignores this package and writes their own pair
+- Imports `llm` and `graph` only — no dependency on `pkg/agent` or `pkg/graph/nodes`
 
 ### Key Architectural Patterns
 
@@ -89,13 +97,16 @@ pkg/
 │   └── errors.go       # Tool error types
 ├── graph/              # Generic orchestration engine (no LLM knowledge)
 │   ├── graph.go        # Node, NodeFunc, Router, Reducer, Builder
+│   ├── reduce.go       # Reducer combinators (Merge, Set, Append, Add, ...)
 │   ├── compile.go      # Static analysis → Runner
 │   ├── runner.go       # Super-step execution, Run + Stream + Resume
 │   ├── mapnode.go      # MapNode map-reduce with independent parallelism limit
 │   ├── checkpoint.go   # Checkpointer interface + MemoryCheckpointer
-│   └── errors.go       # Graph error types
-├── graphllm/           # llm/agent ⇄ graph adapters (depends on llm, agent, graph)
-│   └── graphllm.go     # LLMNode, ToolNode, AgentNode, ChatState
+│   ├── errors.go       # Graph error types
+│   ├── nodes/          # llm/agent ⇄ graph adapters (depends on llm, agent, graph)
+│   │   └── nodes.go    # LLMNode, ToolNode, AgentNode
+│   └── chat/           # Conversation state default (depends on llm, graph)
+│       └── chat.go     # State, Update, Reducer
 └── providers/          # llm.LLM implementations
     ├── openai/
     ├── anthropic/
@@ -104,7 +115,12 @@ pkg/
 examples/                # Usage examples
 ├── multi-models/       # Provider comparison
 ├── agent/              # Agent with tools
+├── graph-simple/       # Smallest graph: two sequential nodes, no LLM, no API key
 └── graph/              # Graph orchestration (draft→critique→publish loop)
+    ├── main.go         # Topology only
+    ├── workflow.go     # State, Update, reducer
+    ├── prompts.go      # Prompt construction
+    └── config.go       # Provider/router setup
 ```
 
 ## Development Notes
@@ -131,7 +147,7 @@ examples/                # Usage examples
 
 ### Testing Strategy
 
-- `pkg/agent`, `pkg/graphllm`, and `pkg/graph` have table-driven unit tests with hand-written mocks (`mockTool`, `mockLLM`, `mockNode`)
+- `pkg/agent`, `pkg/graph/nodes`, `pkg/graph/chat`, and `pkg/graph` have table-driven unit tests with hand-written mocks (`mockTool`, `mockLLM`, `mockNode`)
 - Run the graph suite under the race detector: `go test ./pkg/graph -race` (parallel node execution over shared state is exactly the bug class it catches)
 - Provider code is still tested manually via the `examples/` directory (needs real API keys)
 

@@ -1,68 +1,22 @@
+// Command graph demonstrates a bounded draft→critique→publish loop on the
+// generic graph engine. This file is the topology; the supporting pieces are
+// split out so the shape of the workflow is visible in one screen:
+//
+//	config.go    provider/router setup
+//	workflow.go  State, Update, and the reducer that merges them
+//	prompts.go   prompt construction and the APPROVE/REVISE check
 package main
 
 import (
 	"context"
 	"runtime/debug"
-	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
-	"github.com/kelseyhightower/envconfig"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/farbodsalimi/genevieve/pkg/graph"
-	"github.com/farbodsalimi/genevieve/pkg/graphllm"
-	"github.com/farbodsalimi/genevieve/pkg/llm"
-	"github.com/farbodsalimi/genevieve/pkg/providers/openai"
+	"github.com/farbodsalimi/genevieve/pkg/graph/nodes"
 )
-
-const (
-	app          = "genevieve"
-	maxRevisions = 3
-)
-
-type Config struct {
-	Debug        bool   `required:"false" default:"false"`
-	OpenAIAPIKey string `required:"true"`
-}
-
-// State is the workflow's typed state — no map[string]any in sight.
-type State struct {
-	Topic     string
-	Draft     string
-	Critiques []string
-	Revisions int
-	Published string
-}
-
-// Update is a partial change produced by a node.
-type Update struct {
-	Draft     string
-	Critique  string
-	Published string
-	Revised   bool
-}
-
-func reducer() graph.Reducer[State, Update] {
-	return graph.ReducerFunc[State, Update](func(s State, u Update) (State, error) {
-		out := s
-		// copy-on-write the critique slice so prior state is never mutated
-		out.Critiques = append([]string(nil), s.Critiques...)
-		if u.Draft != "" {
-			out.Draft = u.Draft
-		}
-		if u.Critique != "" {
-			out.Critiques = append(out.Critiques, u.Critique)
-		}
-		if u.Revised {
-			out.Revisions = s.Revisions + 1
-		}
-		if u.Published != "" {
-			out.Published = u.Published
-		}
-		return out, nil
-	})
-}
 
 func main() {
 	defer func() {
@@ -72,68 +26,36 @@ func main() {
 		}
 	}()
 
-	godotenv.Load()
-
-	var config Config
-	if err := envconfig.Process(app, &config); err != nil {
-		log.Fatal(err.Error())
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	openaiClient, err := openai.NewClient(ctx, config.OpenAIAPIKey, llm.WithModel("gpt-4o"))
+	router, provider, err := newProvider(ctx)
 	if err != nil {
-		log.Fatalf("openai client: %v", err)
+		log.Fatalf("provider: %v", err)
 	}
-	router := llm.NewRouter()
-	err = router.Register(openaiClient)
-	if err != nil {
-		log.Fatalf("register: %v", err)
-	}
-	provider := openaiClient.Name()
 
-	// draft: write or revise the piece given the topic and any critiques.
-	draft := graphllm.LLMNode(
-		router,
-		provider,
-		func(s State) string {
-			var b strings.Builder
-			b.WriteString("Write a short paragraph about: " + s.Topic + ".\n")
-			if len(s.Critiques) > 0 {
-				b.WriteString("Revise the previous draft addressing this critique:\n")
-				b.WriteString(s.Critiques[len(s.Critiques)-1] + "\n")
-				b.WriteString("Previous draft:\n" + s.Draft + "\n")
-			}
-			return b.String()
-		},
+	// draft: write the piece, or revise it against the newest critique.
+	draft := nodes.LLMNode(
+		router, provider,
+		draftPrompt,
 		func(resp string) Update { return Update{Draft: resp, Revised: true} },
 	)
 
 	// critique: judge the draft. Reply must start with APPROVE or REVISE.
-	critique := graphllm.LLMNode(
+	critique := nodes.LLMNode(
 		router, provider,
-		func(s State) string {
-			return "Critique this paragraph. If it is good enough to publish, reply " +
-				"beginning with the single word APPROVE. Otherwise reply beginning with " +
-				"REVISE and one concrete suggestion.\n\nParagraph:\n" + s.Draft
-		},
+		critiquePrompt,
 		func(resp string) Update { return Update{Critique: resp} },
 	)
 
-	// publish: finalize.
+	// publish: finalize the accepted draft.
 	publish := graph.NodeFunc[State, Update](func(ctx context.Context, s State) (Update, error) {
 		return Update{Published: s.Draft}, nil
 	})
 
-	// route: after a critique, loop back to draft or move to publish.
+	// route: after a critique, loop back to draft or move on to publish.
 	route := func(ctx context.Context, s State) (graph.NodeID, error) {
-		if len(s.Critiques) == 0 {
-			return "publish", nil
-		}
-		last := strings.ToUpper(strings.TrimSpace(s.Critiques[len(s.Critiques)-1]))
-		approved := strings.HasPrefix(last, "APPROVE")
-		if approved || s.Revisions >= maxRevisions {
+		if approved(s.lastCritique()) || s.Revisions >= maxRevisions {
 			return "publish", nil
 		}
 		return "draft", nil
@@ -147,6 +69,8 @@ func main() {
 		AddConditionalEdge("critique", route).
 		SetEntryPoint("draft").
 		SetTerminal("publish").
+		// Each revision costs a draft and a critique super-step; the +2 covers
+		// the final publish step and one step of slack.
 		Compile(graph.WithRecursionLimit(2*maxRevisions + 2))
 	if err != nil {
 		log.Fatalf("compile: %v", err)
@@ -165,4 +89,5 @@ func main() {
 		log.Infof("Critique %d: %s", i+1, c)
 	}
 	log.Infof("Published:\n%s", final.Published)
+
 }
