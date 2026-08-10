@@ -7,19 +7,19 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 
-	"github.com/farbodsalimi/genevieve/pkg/genevieve"
+	"github.com/farbodsalimi/genevieve/pkg/llm"
 )
 
-var _ genevieve.LLM = Client{}
+var _ llm.LLM = Client{}
 
 var defaultModel = openai.ChatModelGPT4o
 
 type Client struct {
 	client  *openai.Client
-	options genevieve.LLMOptions
+	options llm.LLMOptions
 }
 
-func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) (*Client, error) {
+func NewClient(ctx context.Context, apiKey string, opts ...llm.LLMOption) (*Client, error) {
 	client := openai.NewClient(option.WithAPIKey(apiKey))
 	c := &Client{client: &client}
 	for _, opt := range opts {
@@ -35,19 +35,19 @@ func (c Client) Name() string {
 	return "openai"
 }
 
-func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string, error) {
+func (c Client) Chat(ctx context.Context, messages []llm.Message) (string, error) {
 	var messageParamUnion []openai.ChatCompletionMessageParamUnion
 
 	for _, msg := range messages {
 		switch msg.Role {
-		case genevieve.RoleUser:
+		case llm.RoleUser:
 			messageParamUnion = append(messageParamUnion, openai.UserMessage(msg.Content))
-		case genevieve.RoleSystem:
+		case llm.RoleSystem:
 			messageParamUnion = append(messageParamUnion, openai.SystemMessage(msg.Content))
-		case genevieve.RoleAssistant:
+		case llm.RoleAssistant:
 			messageParamUnion = append(messageParamUnion, openai.AssistantMessage(msg.Content))
 		default:
-			return "", fmt.Errorf("openai chat: %w", genevieve.NewInvalidRoleError(msg.Role))
+			return "", fmt.Errorf("openai chat: %w", llm.NewInvalidRoleError(msg.Role))
 		}
 	}
 
@@ -70,5 +70,5 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 }
 
 func (c Client) Complete(ctx context.Context, prompt string) (string, error) {
-	return c.Chat(ctx, []genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
+	return c.Chat(ctx, []llm.Message{{Role: llm.RoleUser, Content: prompt}})
 }

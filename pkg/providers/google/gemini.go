@@ -6,19 +6,19 @@ import (
 
 	"google.golang.org/genai"
 
-	"github.com/farbodsalimi/genevieve/pkg/genevieve"
+	"github.com/farbodsalimi/genevieve/pkg/llm"
 )
 
-var _ genevieve.LLM = Client{}
+var _ llm.LLM = Client{}
 
 const defaultModel = "gemini-2.0-flash"
 
 type Client struct {
 	client  *genai.Client
-	options genevieve.LLMOptions
+	options llm.LLMOptions
 }
 
-func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) (*Client, error) {
+func NewClient(ctx context.Context, apiKey string, opts ...llm.LLMOption) (*Client, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
@@ -41,17 +41,17 @@ func (c Client) Name() string {
 	return "gemini"
 }
 
-func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string, error) {
+func (c Client) Chat(ctx context.Context, messages []llm.Message) (string, error) {
 	var content []*genai.Content
 	for _, msg := range messages {
 		var role string
 		switch msg.Role {
-		case genevieve.RoleUser, genevieve.RoleSystem:
+		case llm.RoleUser, llm.RoleSystem:
 			role = "user"
-		case genevieve.RoleAssistant:
+		case llm.RoleAssistant:
 			role = "model"
 		default:
-			return "", fmt.Errorf("gemini chat: %w", genevieve.NewInvalidRoleError(msg.Role))
+			return "", fmt.Errorf("gemini chat: %w", llm.NewInvalidRoleError(msg.Role))
 		}
 		content = append(
 			content,
@@ -75,5 +75,5 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 }
 
 func (c Client) Complete(ctx context.Context, prompt string) (string, error) {
-	return c.Chat(ctx, []genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
+	return c.Chat(ctx, []llm.Message{{Role: llm.RoleUser, Content: prompt}})
 }

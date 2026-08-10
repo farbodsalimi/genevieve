@@ -1,10 +1,12 @@
-package genevieve
+package agent
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/farbodsalimi/genevieve/pkg/llm"
 )
 
 type AgentTool interface {
@@ -19,11 +21,11 @@ type AgentToolInput struct {
 
 type Agent struct {
 	mu     sync.RWMutex
-	router *Router
+	router *llm.Router
 	tools  map[string]AgentTool
 }
 
-func NewAgent(router *Router) *Agent {
+func NewAgent(router *llm.Router) *Agent {
 	return &Agent{router: router, tools: make(map[string]AgentTool)}
 }
 
@@ -69,9 +71,9 @@ func (a *Agent) TryRegisterTool(tool AgentTool) {
 }
 
 func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (string, error) {
-	llm, ok := a.router.Get(provider)
+	client, ok := a.router.Get(provider)
 	if !ok {
-		return "", NewProviderNotFoundError(provider)
+		return "", llm.NewProviderNotFoundError(provider)
 	}
 
 	a.mu.RLock()
@@ -81,7 +83,7 @@ func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (str
 	}
 	a.mu.RUnlock()
 
-	toolInput, err := a.chooseTool(ctx, llm, prompt, toolNames)
+	toolInput, err := a.chooseTool(ctx, client, prompt, toolNames)
 	if err != nil {
 		return "", fmt.Errorf("agent handle: %w", err)
 	}
@@ -98,17 +100,17 @@ func (a *Agent) Handle(ctx context.Context, provider string, prompt string) (str
 
 func (a *Agent) chooseTool(
 	ctx context.Context,
-	llm LLM,
+	client llm.LLM,
 	question string,
 	toolNames []string,
 ) (AgentToolInput, error) {
-	jsonData, err := llm.Chat(ctx, []Message{
+	jsonData, err := client.Chat(ctx, []llm.Message{
 		{
-			Role:    RoleSystem,
+			Role:    llm.RoleSystem,
 			Content: AgentSystemPrompt(),
 		},
 		{
-			Role:    RoleUser,
+			Role:    llm.RoleUser,
 			Content: AgentChooseToolPrompt(toolNames, question),
 		},
 	})

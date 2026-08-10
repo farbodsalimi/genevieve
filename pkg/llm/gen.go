@@ -1,4 +1,4 @@
-package genevieve
+package llm
 
 import (
 	"context"

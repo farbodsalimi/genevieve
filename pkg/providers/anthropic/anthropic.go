@@ -7,23 +7,23 @@ import (
 	anthropic_sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/farbodsalimi/genevieve/pkg/genevieve"
+	"github.com/farbodsalimi/genevieve/pkg/llm"
 )
 
-var _ genevieve.LLM = Client{}
+var _ llm.LLM = Client{}
 
-var defaultModel = anthropic_sdk.ModelClaudeSonnet4_20250514
+var defaultModel = anthropic_sdk.ModelClaudeSonnet5
 
 type Client struct {
 	client  *anthropic_sdk.Client
-	options genevieve.LLMOptions
+	options llm.LLMOptions
 }
 
 func (c Client) Name() string {
 	return "claude"
 }
 
-func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) (*Client, error) {
+func NewClient(ctx context.Context, apiKey string, opts ...llm.LLMOption) (*Client, error) {
 	client := anthropic_sdk.NewClient(option.WithAPIKey(apiKey))
 	c := &Client{client: &client}
 	for _, opt := range opts {
@@ -38,28 +38,28 @@ func NewClient(ctx context.Context, apiKey string, opts ...genevieve.LLMOption) 
 	return c, nil
 }
 
-func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string, error) {
+func (c Client) Chat(ctx context.Context, messages []llm.Message) (string, error) {
 	var messageParam []anthropic_sdk.MessageParam
 	var systemBlocks []anthropic_sdk.TextBlockParam
 
 	for _, msg := range messages {
 		switch msg.Role {
-		case genevieve.RoleUser:
+		case llm.RoleUser:
 			messageParam = append(
 				messageParam,
 				anthropic_sdk.NewUserMessage(anthropic_sdk.NewTextBlock(msg.Content)),
 			)
-		case genevieve.RoleSystem:
+		case llm.RoleSystem:
 			systemBlocks = append(systemBlocks, anthropic_sdk.TextBlockParam{
 				Text: msg.Content,
 			})
-		case genevieve.RoleAssistant:
+		case llm.RoleAssistant:
 			messageParam = append(
 				messageParam,
 				anthropic_sdk.NewAssistantMessage(anthropic_sdk.NewTextBlock(msg.Content)),
 			)
 		default:
-			return "", fmt.Errorf("anthropic chat: %w", genevieve.NewInvalidRoleError(msg.Role))
+			return "", fmt.Errorf("anthropic chat: %w", llm.NewInvalidRoleError(msg.Role))
 		}
 	}
 
@@ -85,5 +85,5 @@ func (c Client) Chat(ctx context.Context, messages []genevieve.Message) (string,
 }
 
 func (c Client) Complete(ctx context.Context, prompt string) (string, error) {
-	return c.Chat(ctx, []genevieve.Message{{Role: genevieve.RoleUser, Content: prompt}})
+	return c.Chat(ctx, []llm.Message{{Role: llm.RoleUser, Content: prompt}})
 }

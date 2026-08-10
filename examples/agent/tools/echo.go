@@ -3,10 +3,10 @@ package tools
 import (
 	"context"
 
-	"github.com/farbodsalimi/genevieve/pkg/genevieve"
+	"github.com/farbodsalimi/genevieve/pkg/agent"
 )
 
-var _ genevieve.AgentTool = Echo{}
+var _ agent.AgentTool = Echo{}
 
 type Echo struct{}
 
@@ -18,6 +18,6 @@ func (e Echo) Name() string {
 	return "echo"
 }
 
-func (e Echo) Execute(ctx context.Context, input genevieve.AgentToolInput) (string, error) {
+func (e Echo) Execute(ctx context.Context, input agent.AgentToolInput) (string, error) {
 	return "Echo: " + input.ToolInput, nil
 }
