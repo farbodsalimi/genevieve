@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 
 	"github.com/farbodsalimi/genevieve/pkg/graph"
@@ -38,15 +39,17 @@ func main() {
 		return Update{Step: s.Steps[len(s.Steps)-1] + "!"}, nil
 	})
 
-	// The reducer merges updates into state. Combinators declare one rule per
-	// field, so there is no hand-written merge logic: Append grows the slice
-	// copy-on-write, which is what keeps fan-in safe when nodes run in parallel.
-	reducer := graph.Merge(
-		graph.Append(
-			func(s *State) *[]string { return &s.Steps },
-			func(u Update) string { return u.Step },
-		),
-	)
+	// The reducer merges updates into state. It copies the state and the slice
+	// backing array before appending, so the incoming state is never mutated —
+	// which is what keeps fan-in safe when nodes run in parallel.
+	reducer := graph.ReducerFunc[State, Update](func(s State, u Update) (State, error) {
+		nextState := s
+		nextState.Steps = slices.Clone(s.Steps)
+		if u.Step != "" {
+			nextState.Steps = append(nextState.Steps, u.Step)
+		}
+		return nextState, nil
+	})
 
 	// Compile runs static analysis (dangling edges, unreachable nodes, dead
 	// ends) once and returns an immutable Runner safe for concurrent reuse.
