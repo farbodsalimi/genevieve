@@ -96,17 +96,20 @@ exclaim := graph.NodeFunc[State, Update](func(ctx context.Context, s State) (Upd
 })
 ```
 
-**3. A reducer.** It merges updates into state. Rather than hand-writing merge
-logic, declare one rule per field — `Append` copies the slice's backing array,
-which is what keeps a parallel fan-in safe.
+**3. A reducer.** It merges updates into state, one field at a time. Copy the
+state and the backing array of any slice field before writing — that copy is what
+keeps a parallel fan-in safe, since the state you were handed may still be under
+read by another node.
 
 ```go
-reducer := graph.Merge(
-	graph.Append(
-		func(s *State) *[]string { return &s.Steps },
-		func(u Update) string { return u.Step },
-	),
-)
+reducer := graph.ReducerFunc[State, Update](func(s State, u Update) (State, error) {
+	nextState := s
+	nextState.Steps = slices.Clone(s.Steps)
+	if u.Step != "" {
+		nextState.Steps = append(nextState.Steps, u.Step)
+	}
+	return nextState, nil
+})
 ```
 
 **4. The topology.** `Compile` runs static analysis once — dangling edges,
@@ -131,20 +134,26 @@ fmt.Println(final.Steps) // [HELLO HELLO!]
 
 Runnable: `go run ./examples/graph-simple/`
 
-#### Reducer combinators
+#### Writing a reducer
 
-`graph.Merge` composes per-field rules, so the merge policy is visible at the
-call site instead of hidden in a chain of zero-value checks:
+A reducer is plain Go — you write the merge policy per field. Two rules matter:
 
-| Combinator | Merge policy |
-| --- | --- |
-| `Set` | Overwrite always, including with a zero value |
-| `SetIf` | Overwrite when a predicate passes (`NonZero` is the usual one) |
-| `Append` / `AppendIf` | Copy-on-write append of one element |
-| `Concat` | Copy-on-write append of a batch |
-| `Add` | Accumulate a number — the counter case a zero-value check can't express |
-| `Or` | Latch a bool true once any branch sets it |
-| `Apply` | Escape hatch: a raw `func(*State, Update)` for anything else |
+- **Copy before you write.** Copy the state, and the backing array of every slice
+  field you touch. Fan-in reduces several updates against a state that parallel
+  nodes may still hold.
+- **Decide what "the node didn't set this" means, per field.** A zero-value guard
+  (`if u.Draft != ""`) covers most string and slice fields. It can't express a
+  counter, where a delta of `0` and "no delta" are indistinguishable — carry an
+  explicit flag on the update and count off that instead:
+
+```go
+if u.Revised {
+	out.Revisions = s.Revisions + 1
+}
+```
+
+For graphs whose state is just `[]llm.Message`, `pkg/graph/chat` ships a
+ready-made `State`/`Update`/`Reducer` trio, so there's nothing to write.
 
 #### Loops, branching, and LLM nodes
 

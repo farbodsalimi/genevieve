@@ -5,6 +5,8 @@ package main
 // prompts.go; the topology that wires it all together lives in main.go.
 
 import (
+	"slices"
+
 	"github.com/farbodsalimi/genevieve/pkg/graph"
 )
 
@@ -31,37 +33,29 @@ type Update struct {
 	Revised   bool
 }
 
-// reducer merges an Update into State. Each rule names one field and how it
-// combines, so there is no hand-written chain of zero-value checks: SetIf skips
-// a field the node did not produce, AppendIf grows the critique history
-// copy-on-write, and Add counts revisions where a zero-value check could not.
+// reducer merges an Update into State, one field at a time. A zero value means
+// the node did not produce that field, so each string field is guarded — except
+// Revisions, which is counted off the explicit Revised flag because a zero-value
+// check cannot distinguish "no delta" from a real one.
 func reducer() graph.Reducer[State, Update] {
-	return graph.Merge(
-		graph.SetIf(
-			func(s *State) *string { return &s.Draft },
-			func(u Update) string { return u.Draft },
-			graph.NonZero[string],
-		),
-		graph.AppendIf(
-			func(s *State) *[]string { return &s.Critiques },
-			func(u Update) string { return u.Critique },
-			graph.NonZero[string],
-		),
-		graph.Add(
-			func(s *State) *int { return &s.Revisions },
-			func(u Update) int {
-				if u.Revised {
-					return 1
-				}
-				return 0
-			},
-		),
-		graph.SetIf(
-			func(s *State) *string { return &s.Published },
-			func(u Update) string { return u.Published },
-			graph.NonZero[string],
-		),
-	)
+	return graph.ReducerFunc[State, Update](func(s State, u Update) (State, error) {
+		nextState := s
+		// copy the critique slice so the incoming state is never mutated
+		nextState.Critiques = slices.Clone(s.Critiques)
+		if u.Draft != "" {
+			nextState.Draft = u.Draft
+		}
+		if u.Critique != "" {
+			nextState.Critiques = append(nextState.Critiques, u.Critique)
+		}
+		if u.Revised {
+			nextState.Revisions = s.Revisions + 1
+		}
+		if u.Published != "" {
+			nextState.Published = u.Published
+		}
+		return nextState, nil
+	})
 }
 
 // lastCritique returns the most recent critique, or "" before the first one.

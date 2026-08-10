@@ -55,7 +55,7 @@ The code is split into focused packages by concern. Dependencies flow one way:
 
 - Generic, domain-free orchestration engine — knows nothing about LLMs
 - `Graph[T, U]` parameterized over caller state `T` and partial update `U`; nodes return deltas merged by a `Reducer`
-- Reducer combinators (`reduce.go`) — `Merge` composes per-field rules (`Set`, `SetIf`, `Append`, `AppendIf`, `Concat`, `Add`, `Or`, `Apply`, predicate `NonZero`) so callers stop hand-writing zero-value-checking merge logic; `Merge` copies state once and `Append`/`Concat` copy slice backing arrays, keeping fan-in safe
+- Reducers are hand-written per caller via `graph.ReducerFunc` — there are no combinators. A reducer must copy the incoming state (and the backing array of any slice field) before writing, since fan-in reduces several updates against a state that parallel nodes may still be reading; see `pkg/graph/chat` and `examples/graph/workflow.go` for the pattern
 - Two-phase: `Builder.Compile()` runs static analysis (dangling edges, unreachable nodes, dead ends) and returns an immutable `Runner` safe for concurrent reuse
 - Super-step execution: each step runs the active frontier in parallel via `errgroup`, then applies reducers in deterministic node-ID order
 - Supports sequential edges, parallel fan-out/fan-in, conditional/fan routing, bounded loops (recursion limit, not cycle rejection), `Stream`, checkpointing, `MapNode` map-reduce, and panic containment
@@ -96,8 +96,7 @@ pkg/
 │   ├── schema.go       # Tool selection schema
 │   └── errors.go       # Tool error types
 ├── graph/              # Generic orchestration engine (no LLM knowledge)
-│   ├── graph.go        # Node, NodeFunc, Router, Reducer, Builder
-│   ├── reduce.go       # Reducer combinators (Merge, Set, Append, Add, ...)
+│   ├── graph.go        # Node, NodeFunc, Router, Reducer, ReducerFunc, Builder
 │   ├── compile.go      # Static analysis → Runner
 │   ├── runner.go       # Super-step execution, Run + Stream + Resume
 │   ├── mapnode.go      # MapNode map-reduce with independent parallelism limit
