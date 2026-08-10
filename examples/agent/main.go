@@ -9,7 +9,8 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/farbodsalimi/genevieve/pkg/genevieve"
+	"github.com/farbodsalimi/genevieve/pkg/agent"
+	"github.com/farbodsalimi/genevieve/pkg/llm"
 	"github.com/farbodsalimi/genevieve/pkg/providers/openai"
 
 	"github.com/farbodsalimi/genevieve/examples/agent/tools"
@@ -47,14 +48,14 @@ func main() {
 	defer cancel()
 
 	// Create a new OpenAI client
-	openaiClient, _ := openai.NewClient(ctx, config.OpenAIAPIKey, genevieve.WithModel("gpt-4o"))
+	openaiClient, _ := openai.NewClient(ctx, config.OpenAIAPIKey, llm.WithModel("gpt-4o"))
 
 	// Register OpenAI as a router
-	router := genevieve.NewRouter()
+	router := llm.NewRouter()
 	router.Register(openaiClient)
 
 	// Create a new agent with two tools
-	myAgent := genevieve.NewAgent(router)
+	myAgent := agent.NewAgent(router)
 	myAgent.RegisterTool(tools.NewCalculator())
 	myAgent.RegisterTool(tools.NewEcho())
 

@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `go build ./...` - Build all packages
 - `go test ./...` - Run all tests
-- `go test ./pkg/genevieve` - Test core library only
+- `go test ./pkg/graph -race` - Test the graph engine (race detector mandatory)
 - `go test -run TestSpecificFunction` - Run specific test
 - `go mod tidy` - Clean up dependencies
 
@@ -22,35 +22,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `go run ./examples/multi-models/` - Run multi-provider example
 - `go run ./examples/agent/` - Run agent example
+- `go run ./examples/graph/` - Run graph orchestration example (draft→critique→publish loop)
 
 ## Architecture Overview
 
 ### Core Components
 
-**Router System** (`pkg/genevieve/router.go`):
+The code is split into focused packages by concern. Dependencies flow one way:
+`providers` → `llm`; `agent` → `llm`; `graphllm` → `llm` + `agent` + `graph`.
+`graph` depends on nothing internal, so it stays a domain-free engine.
 
-- Central registry for LLM providers
-- Maps provider names to LLM implementations
-- Thread-safe with mutex protection for concurrent access
+**LLM Core** (`pkg/llm/`):
 
-**Provider Interface** (`pkg/genevieve/model.go`):
+- `LLM` interface (`model.go`) — the contract every provider implements; two methods, `Complete()` and `Chat()`, both context-aware
+- `Router` (`router.go`) — thread-safe registry mapping provider names to `LLM` implementations
+- Main API (`gen.go`) — `Genevieve.Ask()` (single provider) and `AskAll()` (parallel fan-out)
+- Provider/role error types (`errors.go`): `ProviderNotFoundError`, `ProviderRegistrationError`, `InvalidRoleError`
 
-- `LLM` interface defines contract for all providers
-- Three main methods: `Complete()`, `Chat()`, `ChooseTool()` - all support context for cancellation/timeouts
-- Implementations in `pkg/providers/` for OpenAI, Anthropic, Google
-- Structured error types for different failure scenarios
+**Providers** (`pkg/providers/`):
 
-**Agent System** (`pkg/genevieve/agent.go`):
+- Concrete `llm.LLM` implementations for OpenAI, Anthropic, Google
 
-- Autonomous agents that can use tools
-- Single tool execution per request (no chaining yet)
-- Tool selection via LLM reasoning
-- Context propagation through all agent operations
+**Agent System** (`pkg/agent/`):
 
-**Main API** (`pkg/genevieve/gen.go`):
+- Autonomous agents that use tools (`agent.go`); prompts (`prompts.go`) and tool-selection schema (`schema.go`)
+- Single tool execution per request (no chaining; multi-step orchestration lives in `pkg/graph`)
+- Tool selection via LLM reasoning in the unexported `Agent.chooseTool` (builds on `llm.LLM.Chat`)
+- Tool error types (`errors.go`): `ToolNotFoundError`, `ToolRegistrationError`
 
-- `Ask()` - Query single provider
-- `AskAll()` - Parallel queries to all registered providers
+**Graph Engine** (`pkg/graph/`):
+
+- Generic, domain-free orchestration engine — knows nothing about LLMs
+- `Graph[T, U]` parameterized over caller state `T` and partial update `U`; nodes return deltas merged by a `Reducer`
+- Two-phase: `Builder.Compile()` runs static analysis (dangling edges, unreachable nodes, dead ends) and returns an immutable `Runner` safe for concurrent reuse
+- Super-step execution: each step runs the active frontier in parallel via `errgroup`, then applies reducers in deterministic node-ID order
+- Supports sequential edges, parallel fan-out/fan-in, conditional/fan routing, bounded loops (recursion limit, not cycle rejection), `Stream`, checkpointing, `MapNode` map-reduce, and panic containment
+- Fail-fast on the first node/router error; caller panics are recovered as `NodePanicError`
+
+**Graph Bindings** (`pkg/graphllm/`):
+
+- Adapters wiring the LLM packages into the graph engine: `LLMNode`, `ToolNode`, `AgentNode`
+- `ChatState`/`ChatUpdate`/`ChatReducer` batteries-included conversation default
+- Imports `llm`, `agent`, and `graph` — never the reverse — so `pkg/graph` stays domain-free with no import cycle
 
 ### Key Architectural Patterns
 
@@ -64,52 +77,63 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 pkg/
-├── genevieve/          # Core library
-│   ├── model.go        # LLM interface & types
+├── llm/                # LLM core: interface, router, main API, provider errors
+│   ├── model.go        # LLM interface & types (Message, RoleType, options)
 │   ├── router.go       # Provider registry
-│   ├── gen.go          # Main API
-│   ├── agent.go        # Agent system
+│   ├── gen.go          # Main API (Genevieve.Ask / AskAll)
+│   └── errors.go       # Provider & role error types
+├── agent/              # Agent system (depends on llm)
+│   ├── agent.go        # Agent, AgentTool, tool selection
 │   ├── prompts.go      # Agent prompts
-│   └── schema.go       # Tool selection schema
-└── providers/          # LLM provider implementations
+│   ├── schema.go       # Tool selection schema
+│   └── errors.go       # Tool error types
+├── graph/              # Generic orchestration engine (no LLM knowledge)
+│   ├── graph.go        # Node, NodeFunc, Router, Reducer, Builder
+│   ├── compile.go      # Static analysis → Runner
+│   ├── runner.go       # Super-step execution, Run + Stream + Resume
+│   ├── mapnode.go      # MapNode map-reduce with independent parallelism limit
+│   ├── checkpoint.go   # Checkpointer interface + MemoryCheckpointer
+│   └── errors.go       # Graph error types
+├── graphllm/           # llm/agent ⇄ graph adapters (depends on llm, agent, graph)
+│   └── graphllm.go     # LLMNode, ToolNode, AgentNode, ChatState
+└── providers/          # llm.LLM implementations
     ├── openai/
     ├── anthropic/
     └── google/
 
 examples/                # Usage examples
 ├── multi-models/       # Provider comparison
-└── agent/              # Agent with tools
+├── agent/              # Agent with tools
+└── graph/              # Graph orchestration (draft→critique→publish loop)
 ```
 
 ## Development Notes
 
 ### Adding New LLM Providers
 
-1. Implement the `LLM` interface in `pkg/providers/yourprovider/`
-2. Ensure all three methods work: `Complete()`, `Chat()`, `ChooseTool()`
-3. Handle JSON parsing for `ChooseTool()` - must return valid `AgentToolInput`
+1. Implement the `llm.LLM` interface in `pkg/providers/yourprovider/`
+2. Ensure both methods work: `Complete()` and `Chat()`
+3. `Chat()` must return well-formed content — `agent.Agent.chooseTool` parses its JSON into `agent.AgentToolInput`
 4. Follow existing provider patterns for configuration and error handling
 
 ### Adding New Agent Tools
 
-1. Implement the `AgentTool` interface
+1. Implement the `agent.AgentTool` interface
 2. Provide meaningful `Name()` and handle JSON input in `Execute()`
 3. Look at `examples/agent/tools/` for reference implementations
 
-### Current Limitations (See TODO.md)
+### Current Limitations
 
-- Single tool execution per agent request (no chaining)
+- Single tool execution per agent request (no chaining) — addressed by the `pkg/graph` orchestration engine for multi-step workflows
 - Plain string responses (no metadata)
-- No structured logging or observability
-- No retry logic or rate limiting
+- No structured logging or observability (graph observability hooks planned as `Middleware[T, U]`)
+- No retry logic or rate limiting (graph `WithMaxParallel` bounds per-run concurrency)
 
 ### Testing Strategy
 
-No formal test suite exists yet. Test manually using:
-
-- Examples in `examples/` directory
-- Provider-specific functionality
-- Agent tool interactions
+- `pkg/agent`, `pkg/graphllm`, and `pkg/graph` have table-driven unit tests with hand-written mocks (`mockTool`, `mockLLM`, `mockNode`)
+- Run the graph suite under the race detector: `go test ./pkg/graph -race` (parallel node execution over shared state is exactly the bug class it catches)
+- Provider code is still tested manually via the `examples/` directory (needs real API keys)
 
 ### Dependencies
 
@@ -123,4 +147,5 @@ Utilities:
 
 - `github.com/joho/godotenv` - Environment configuration
 - `github.com/kelseyhightower/envconfig` - Config parsing
-- `github.com/op/go-logging` - Logging (minimal usage currently)
+- `github.com/sirupsen/logrus` - Logging (minimal usage currently)
+- `golang.org/x/sync` - `errgroup` for graph super-step concurrency

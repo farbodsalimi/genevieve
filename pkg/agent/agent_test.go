@@ -1,8 +1,10 @@
-package genevieve
+package agent
 
 import (
 	"context"
 	"testing"
+
+	"github.com/farbodsalimi/genevieve/pkg/llm"
 )
 
 type mockTool struct {
@@ -18,7 +20,7 @@ func (m *mockTool) Execute(ctx context.Context, input AgentToolInput) (string, e
 }
 
 func TestRegisterTool_ValidTool(t *testing.T) {
-	router := NewRouter()
+	router := llm.NewRouter()
 	agent := NewAgent(router)
 	tool := &mockTool{name: "test-tool"}
 
@@ -33,7 +35,7 @@ func TestRegisterTool_ValidTool(t *testing.T) {
 }
 
 func TestRegisterTool_NilTool(t *testing.T) {
-	router := NewRouter()
+	router := llm.NewRouter()
 	agent := NewAgent(router)
 
 	err := agent.RegisterTool(nil)
@@ -48,7 +50,7 @@ func TestRegisterTool_NilTool(t *testing.T) {
 }
 
 func TestRegisterTool_EmptyName(t *testing.T) {
-	router := NewRouter()
+	router := llm.NewRouter()
 	agent := NewAgent(router)
 	tool := &mockTool{name: ""}
 
@@ -64,7 +66,7 @@ func TestRegisterTool_EmptyName(t *testing.T) {
 }
 
 func TestRegisterTool_DuplicateTool(t *testing.T) {
-	router := NewRouter()
+	router := llm.NewRouter()
 	agent := NewAgent(router)
 	tool1 := &mockTool{name: "calculator"}
 	tool2 := &mockTool{name: "calculator"}
@@ -86,7 +88,7 @@ func TestRegisterTool_DuplicateTool(t *testing.T) {
 }
 
 func TestTryRegisterTool_ValidTool(t *testing.T) {
-	router := NewRouter()
+	router := llm.NewRouter()
 	agent := NewAgent(router)
 	tool := &mockTool{name: "test-tool"}
 
@@ -98,7 +100,7 @@ func TestTryRegisterTool_ValidTool(t *testing.T) {
 }
 
 func TestTryRegisterTool_NilTool(t *testing.T) {
-	router := NewRouter()
+	router := llm.NewRouter()
 	agent := NewAgent(router)
 
 	agent.TryRegisterTool(nil)
@@ -109,7 +111,7 @@ func TestTryRegisterTool_NilTool(t *testing.T) {
 }
 
 func TestTryRegisterTool_EmptyName(t *testing.T) {
-	router := NewRouter()
+	router := llm.NewRouter()
 	agent := NewAgent(router)
 	tool := &mockTool{name: ""}
 
@@ -121,7 +123,7 @@ func TestTryRegisterTool_EmptyName(t *testing.T) {
 }
 
 func TestTryRegisterTool_DuplicateTool(t *testing.T) {
-	router := NewRouter()
+	router := llm.NewRouter()
 	agent := NewAgent(router)
 	tool1 := &mockTool{name: "calculator"}
 	tool2 := &mockTool{name: "calculator"}

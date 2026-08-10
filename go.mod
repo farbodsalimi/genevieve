@@ -8,6 +8,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/openai/openai-go v1.12.0
 	github.com/sirupsen/logrus v1.9.4
+	golang.org/x/sync v0.20.0
 	google.golang.org/genai v1.52.1
 )
 
@@ -35,7 +36,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.42.0 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	google.golang.org/api v0.273.1 // indirect

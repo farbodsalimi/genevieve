@@ -10,7 +10,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/farbodsalimi/genevieve/pkg/genevieve"
+	"github.com/farbodsalimi/genevieve/pkg/llm"
 	"github.com/farbodsalimi/genevieve/pkg/providers/anthropic"
 	"github.com/farbodsalimi/genevieve/pkg/providers/google"
 	"github.com/farbodsalimi/genevieve/pkg/providers/openai"
@@ -51,12 +51,12 @@ func main() {
 	anthropicClient, _ := anthropic.NewClient(ctx, config.AnthropicAPIKey)
 	geminiClient, _ := google.NewClient(ctx, config.GeminiAPIKey)
 
-	router := genevieve.NewRouter()
+	router := llm.NewRouter()
 	router.Register(openaiClient)
 	router.Register(anthropicClient)
 	router.Register(geminiClient)
 
-	assistant := genevieve.NewGenevieve(router)
+	assistant := llm.NewGenevieve(router)
 
 	// Prompt
 	prompt := fmt.Sprintf(

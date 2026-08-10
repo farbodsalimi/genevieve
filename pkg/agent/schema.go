@@ -1,4 +1,4 @@
-package genevieve
+package agent
 
 const AgentChooseToolSchema = `{
   "type": "object",
