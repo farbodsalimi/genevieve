@@ -12,7 +12,7 @@ import (
 
 var _ llm.LLM = Client{}
 
-var defaultModel = anthropic_sdk.ModelClaudeSonnet4_20250514
+var defaultModel = anthropic_sdk.ModelClaudeSonnet5
 
 type Client struct {
 	client  *anthropic_sdk.Client
