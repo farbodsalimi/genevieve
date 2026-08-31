@@ -65,12 +65,21 @@ func main() {
 	}
 
 	for _, q := range questions {
-		a, err := myAgent.Handle(ctx, openaiClient.Name(), q)
+		a, err := myAgent.Run(ctx, agent.RunRequest{
+			Provider: openaiClient.Name(),
+			Messages: []llm.Message{{Role: llm.RoleUser, Content: q}},
+			MaxTurns: 6,
+			Stream:   true,
+			Callbacks: agent.Callbacks{OnText: func(delta string) error {
+				log.Infof("stream: %s", delta)
+				return nil
+			}},
+		})
 		if err != nil {
 			log.Errorf("Question %s errored out: %v", q, err)
 			continue
 		}
 		log.Infof("Q: %s", q)
-		log.Infof("A: %s", a)
+		log.Infof("A: %s (tokens: %d)", a.Output, a.Usage.Total())
 	}
 }

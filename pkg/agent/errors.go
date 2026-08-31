@@ -1,6 +1,10 @@
 package agent
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/farbodsalimi/genevieve/pkg/llm"
+)
 
 // ToolNotFoundError is returned when an agent tries to execute a tool that is not registered
 type ToolNotFoundError struct {
@@ -45,4 +49,18 @@ func NewEmptyToolNameError() *ToolRegistrationError {
 
 func NewDuplicateToolError(name string) *ToolRegistrationError {
 	return &ToolRegistrationError{ToolName: name, Reason: "tool is already registered"}
+}
+
+type TurnLimitError struct{ Limit int }
+
+func (e *TurnLimitError) Error() string           { return fmt.Sprintf("agent turn limit %d reached", e.Limit) }
+func NewTurnLimitError(limit int) *TurnLimitError { return &TurnLimitError{Limit: limit} }
+
+type BudgetExceededError struct{ Usage llm.Usage }
+
+func (e *BudgetExceededError) Error() string {
+	return fmt.Sprintf("agent token budget exceeded after %d tokens", e.Usage.Total())
+}
+func NewBudgetExceededError(usage llm.Usage) *BudgetExceededError {
+	return &BudgetExceededError{Usage: usage}
 }

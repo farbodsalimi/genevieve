@@ -43,6 +43,12 @@ type NodeFunc[T any, U any] func(ctx context.Context, state T) (U, error)
 
 func (f NodeFunc[T, U]) Execute(ctx context.Context, s T) (U, error) { return f(ctx, s) }
 
+// NodeErrorHandler converts a node failure into an ordinary update. Configure
+// one with WithNodeErrorHandler to let sibling nodes finish and downstream
+// nodes continue with an explicit failure update. Without one, runs fail fast.
+// The supplied error is a *NodeExecutionError or *NodePanicError.
+type NodeErrorHandler[U any] func(nodeID NodeID, err error) (U, error)
+
 // Router inspects state and names the next node. Return the zero NodeID ("") to
 // halt this branch. An error halts the entire run (RouterExecutionError).
 type Router[T any] func(ctx context.Context, state T) (NodeID, error)

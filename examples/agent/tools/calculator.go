@@ -2,10 +2,8 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/farbodsalimi/genevieve/pkg/agent"
 )
@@ -22,12 +20,23 @@ func (c Calculator) Name() string {
 	return "calculator"
 }
 
-func (c Calculator) Execute(ctx context.Context, input agent.AgentToolInput) (string, error) {
-	parts := strings.Split(input.ToolInput, "+")
-	if len(parts) != 2 {
-		return "", errors.New("only support 'a + b'")
+func (c Calculator) Description() string { return "Add two integers." }
+func (c Calculator) Schema() json.RawMessage {
+	return json.RawMessage(
+		`{"type":"object","properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"]}`,
+	)
+}
+func (c Calculator) Terminal() bool { return false }
+func (c Calculator) Execute(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
+	var args struct {
+		A int `json:"a"`
+		B int `json:"b"`
 	}
-	a, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
-	b, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
-	return fmt.Sprintf("%d", a+b), nil
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, err
+	}
+	if len(input) == 0 {
+		return nil, errors.New("missing calculator input")
+	}
+	return json.Marshal(map[string]int{"result": args.A + args.B})
 }

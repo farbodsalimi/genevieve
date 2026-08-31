@@ -10,14 +10,14 @@ With Genevieve, developers can:
 
 ## Packages
 
-| Package | Purpose |
-| --- | --- |
-| `pkg/llm` | The `LLM` interface, provider router, and the `Genevieve` API (`Ask`, `AskAll`) |
-| `pkg/providers` | Concrete providers: OpenAI, Anthropic, Google |
-| `pkg/agent` | Agents that select and run a tool per request |
-| `pkg/graph` | A generic, domain-free orchestration engine — knows nothing about LLMs |
-| `pkg/graph/nodes` | Adapters wiring the LLM packages into the graph engine |
-| `pkg/graph/chat` | Batteries-included conversation state (`State`, `Update`, `Reducer`) |
+| Package           | Purpose                                                                         |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `pkg/llm`         | The `LLM` interface, provider router, and the `Genevieve` API (`Ask`, `AskAll`) |
+| `pkg/providers`   | Concrete providers: OpenAI, Anthropic, Google                                   |
+| `pkg/agent`       | Bounded multi-turn agents with tools, budgets, streaming, and middleware        |
+| `pkg/graph`       | A generic, domain-free orchestration engine — knows nothing about LLMs          |
+| `pkg/graph/nodes` | Adapters wiring the LLM packages into the graph engine                          |
+| `pkg/graph/chat`  | Batteries-included conversation state (`State`, `Update`, `Reducer`)            |
 
 ## Examples
 
@@ -36,7 +36,10 @@ router.Register(anthropicClient)
 router.Register(geminiClient)
 
 gen := llm.NewGenevieve(router)
-results := gen.AskAll(ctx, "When did human life first appear on Earth?")
+request := llm.GenerateRequest{
+	Messages: []llm.Message{{Role: llm.RoleUser, Content: "When did human life first appear on Earth?"}},
+}
+results := gen.AskAll(ctx, request)
 ```
 
 ### AI Agents
@@ -59,8 +62,24 @@ if err := myAgent.RegisterTool(tools.NewCalculator()); err != nil {
 // Option 2: Register silently (ignores invalid tools)
 myAgent.TryRegisterTool(tools.NewCalculator())
 
-answer, _ := myAgent.Handle(ctx, openaiClient.Name(), "What is 4 + 5?")
+answer, _ := myAgent.Run(ctx, agent.RunRequest{
+	Provider: openaiClient.Name(),
+	Messages: []llm.Message{{Role: llm.RoleUser, Content: "What is 4 + 5?"}},
+	MaxTurns: 6,
+	ThinkingEffort: llm.ThinkingMedium,
+	Budget: agent.Budget{MaxTotalTokens: 8_000, WrapUpReserve: 500},
+	Stream: true,
+	Callbacks: agent.Callbacks{
+		OnText: func(delta string) error { /* write an SSE text event */; return nil },
+		OnToolCall: func(call llm.ToolCall) error { /* write an SSE tool event */; return nil },
+	},
+})
+fmt.Println(answer.Output, answer.Usage.Total())
 ```
+
+Every tool supplies its description and JSON Schema to the model. Tools marked
+terminal can end a run with structured JSON. `UseTool` wraps execution for PII,
+authorization, logging, or retries; `UseEvents` wraps streamed model output.
 
 ### Graphs
 

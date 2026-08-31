@@ -15,16 +15,20 @@ func NewGenevieve(router *Router) *Genevieve {
 
 // Query a specific provider
 // TODO: Add metrics/observability for provider performance
-func (g *Genevieve) Ask(ctx context.Context, provider string, prompt string) (string, error) {
-	llm, ok := g.router.Get(provider)
+func (g *Genevieve) Ask(
+	ctx context.Context,
+	provider string,
+	req GenerateRequest,
+) (GenerateResponse, error) {
+	model, ok := g.router.Get(provider)
 	if !ok {
-		return "", NewProviderNotFoundError(provider)
+		return GenerateResponse{}, NewProviderNotFoundError(provider)
 	}
-	return llm.Complete(ctx, prompt)
+	return model.Generate(ctx, req)
 }
 
 // Broadcast to all providers (parallel fan-out)
-func (g *Genevieve) AskAll(ctx context.Context, prompt string) map[string]Result {
+func (g *Genevieve) AskAll(ctx context.Context, req GenerateRequest) map[string]Result {
 	results := make(map[string]Result)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -32,9 +36,9 @@ func (g *Genevieve) AskAll(ctx context.Context, prompt string) map[string]Result
 	providers := g.router.GetAll()
 	for name, llm := range providers {
 		wg.Add(1)
-		go func(name string, llm LLM) {
+		go func(name string, model LLM) {
 			defer wg.Done()
-			resp, err := llm.Complete(ctx, prompt)
+			resp, err := model.Generate(ctx, req)
 			mu.Lock()
 			results[name] = Result{Response: resp, Err: err}
 			mu.Unlock()

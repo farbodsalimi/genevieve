@@ -8,6 +8,7 @@ package nodes
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/farbodsalimi/genevieve/pkg/agent"
 	"github.com/farbodsalimi/genevieve/pkg/graph"
@@ -30,18 +31,23 @@ func LLMNode[T any, U any](
 		if !ok {
 			return zero, llm.NewProviderNotFoundError(provider)
 		}
-		resp, err := client.Complete(ctx, prompt(state))
+		resp, err := client.Generate(
+			ctx,
+			llm.GenerateRequest{
+				Messages: []llm.Message{{Role: llm.RoleUser, Content: prompt(state)}},
+			},
+		)
 		if err != nil {
 			return zero, err
 		}
-		return wrap(resp), nil
+		return wrap(resp.Text), nil
 	})
 }
 
 // ToolNode executes an agent.AgentTool with input derived from state.
 func ToolNode[T any, U any](
 	tool agent.AgentTool,
-	input func(T) agent.AgentToolInput,
+	input func(T) json.RawMessage,
 	wrap func(string) U,
 ) graph.Node[T, U] {
 	return graph.NodeFunc[T, U](func(ctx context.Context, state T) (U, error) {
@@ -50,12 +56,11 @@ func ToolNode[T any, U any](
 		if err != nil {
 			return zero, err
 		}
-		return wrap(resp), nil
+		return wrap(string(resp)), nil
 	})
 }
 
-// AgentNode delegates to agent.Agent.Handle, letting one node do LLM
-// tool-selection.
+// AgentNode delegates to Agent.Run, including its bounded multi-turn tool loop.
 func AgentNode[T any, U any](
 	a *agent.Agent,
 	provider string,
@@ -64,10 +69,16 @@ func AgentNode[T any, U any](
 ) graph.Node[T, U] {
 	return graph.NodeFunc[T, U](func(ctx context.Context, state T) (U, error) {
 		var zero U
-		resp, err := a.Handle(ctx, provider, prompt(state))
+		resp, err := a.Run(
+			ctx,
+			agent.RunRequest{
+				Provider: provider,
+				Messages: []llm.Message{{Role: llm.RoleUser, Content: prompt(state)}},
+			},
+		)
 		if err != nil {
 			return zero, err
 		}
-		return wrap(resp), nil
+		return wrap(resp.Output), nil
 	})
 }

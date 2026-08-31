@@ -65,16 +65,17 @@ func main() {
 	)
 
 	// Ask a specific provider
-	resp, err := assistant.Ask(ctx, openaiClient.Name(), prompt)
+	req := llm.GenerateRequest{Messages: []llm.Message{{Role: llm.RoleUser, Content: prompt}}}
+	resp, err := assistant.Ask(ctx, openaiClient.Name(), req)
 	if err != nil {
 		log.Fatalf("OpenAI errored out: %s", err.Error())
 	}
-	log.Infof("OpenAI answered: %s", resp)
+	log.Infof("OpenAI answered: %s", resp.Text)
 
 	// Ask all providers
-	results := assistant.AskAll(ctx, prompt)
+	results := assistant.AskAll(ctx, req)
 	for provider, result := range results {
-		log.Infof("[%s]: response %s err %v", provider, result.Response, result.Err)
+		log.Infof("[%s]: response %s err %v", provider, result.Response.Text, result.Err)
 	}
 }
 
