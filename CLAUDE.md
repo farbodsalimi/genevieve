@@ -35,7 +35,7 @@ The code is split into focused packages by concern. Dependencies flow one way:
 
 **LLM Core** (`pkg/llm/`):
 
-- `LLM` interface (`model.go`) — the contract every provider implements; two methods, `Complete()` and `Chat()`, both context-aware
+- `LLM` interface (`model.go`) — structured `Generate` and event-based `Stream`, including tool calls, usage, and thinking effort
 - `Router` (`router.go`) — thread-safe registry mapping provider names to `LLM` implementations
 - Main API (`gen.go`) — `Genevieve.Ask()` (single provider) and `AskAll()` (parallel fan-out)
 - Provider/role error types (`errors.go`): `ProviderNotFoundError`, `ProviderRegistrationError`, `InvalidRoleError`
@@ -46,9 +46,9 @@ The code is split into focused packages by concern. Dependencies flow one way:
 
 **Agent System** (`pkg/agent/`):
 
-- Autonomous agents that use tools (`agent.go`); prompts (`prompts.go`) and tool-selection schema (`schema.go`)
-- Single tool execution per request (no chaining; multi-step orchestration lives in `pkg/graph`)
-- Tool selection via LLM reasoning in the unexported `Agent.chooseTool` (builds on `llm.LLM.Chat`)
+- Bounded multi-turn tool loop with per-tool JSON Schema, terminal tools, usage accounting, token budgets, and budget wrap-up
+- Typed streaming events and tool/event middleware provide SSE and PII wrapping seams
+- Provider-neutral thinking effort is mapped by each provider adapter
 - Tool error types (`errors.go`): `ToolNotFoundError`, `ToolRegistrationError`
 
 **Graph Engine** (`pkg/graph/`):
@@ -79,7 +79,7 @@ The code is split into focused packages by concern. Dependencies flow one way:
 
 **Router Pattern**: Central registry pattern enables dynamic provider management and multi-provider operations.
 
-**Agent-Tool Architecture**: Agents use LLMs to choose appropriate tools based on user queries, with JSON-based tool selection.
+**Agent-Tool Architecture**: Providers return native structured tool calls; the agent executes them and feeds correlated results back until completion, a terminal tool, or a bound is reached.
 
 ## Project Structure
 
@@ -91,9 +91,7 @@ pkg/
 │   ├── gen.go          # Main API (Genevieve.Ask / AskAll)
 │   └── errors.go       # Provider & role error types
 ├── agent/              # Agent system (depends on llm)
-│   ├── agent.go        # Agent, AgentTool, tool selection
-│   ├── prompts.go      # Agent prompts
-│   ├── schema.go       # Tool selection schema
+│   ├── agent.go        # Agent loop, tools, budgets, events, middleware
 │   └── errors.go       # Tool error types
 ├── graph/              # Generic orchestration engine (no LLM knowledge)
 │   ├── graph.go        # Node, NodeFunc, Router, Reducer, ReducerFunc, Builder
@@ -126,23 +124,21 @@ examples/                # Usage examples
 
 ### Adding New LLM Providers
 
-1. Implement the `llm.LLM` interface in `pkg/providers/yourprovider/`
-2. Ensure both methods work: `Complete()` and `Chat()`
-3. `Chat()` must return well-formed content — `agent.Agent.chooseTool` parses its JSON into `agent.AgentToolInput`
+1. Implement `Generate` and `Stream` from the `llm.LLM` interface
+2. Translate structured messages, tool definitions/calls, usage, and thinking effort
+3. Emit text, tool-call, and final usage events from `Stream`
 4. Follow existing provider patterns for configuration and error handling
 
 ### Adding New Agent Tools
 
 1. Implement the `agent.AgentTool` interface
-2. Provide meaningful `Name()` and handle JSON input in `Execute()`
+2. Provide a description, object JSON Schema, terminal flag, and JSON execution contract
 3. Look at `examples/agent/tools/` for reference implementations
 
 ### Current Limitations
 
-- Single tool execution per agent request (no chaining) — addressed by the `pkg/graph` orchestration engine for multi-step workflows
-- Plain string responses (no metadata)
 - No structured logging or observability (graph observability hooks planned as `Middleware[T, U]`)
-- No retry logic or rate limiting (graph `WithMaxParallel` bounds per-run concurrency)
+- No built-in retry policy; agent tool middleware and graph node wrappers can supply one
 
 ### Testing Strategy
 

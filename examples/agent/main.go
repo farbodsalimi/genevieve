@@ -70,12 +70,10 @@ func main() {
 			Messages: []llm.Message{{Role: llm.RoleUser, Content: q}},
 			MaxTurns: 6,
 			Stream:   true,
-			OnEvent: func(event llm.Event) error {
-				if event.Type == llm.EventTextDelta {
-					log.Infof("stream: %s", event.Text)
-				}
+			Callbacks: agent.Callbacks{OnText: func(delta string) error {
+				log.Infof("stream: %s", delta)
 				return nil
-			},
+			}},
 		})
 		if err != nil {
 			log.Errorf("Question %s errored out: %v", q, err)

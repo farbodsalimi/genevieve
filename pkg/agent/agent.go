@@ -22,6 +22,30 @@ type ToolExecutor func(context.Context, llm.ToolCall) (json.RawMessage, error)
 type ToolMiddleware func(ToolExecutor) ToolExecutor
 type EventMiddleware func(llm.EventHandler) llm.EventHandler
 
+type Callbacks struct {
+	OnText     func(string) error
+	OnToolCall func(llm.ToolCall) error
+	OnUsage    func(llm.Usage) error
+}
+
+func (c Callbacks) handler(event llm.Event) error {
+	switch event.Type {
+	case llm.EventTextDelta:
+		if c.OnText != nil {
+			return c.OnText(event.Text)
+		}
+	case llm.EventToolCall:
+		if c.OnToolCall != nil && event.ToolCall != nil {
+			return c.OnToolCall(*event.ToolCall)
+		}
+	case llm.EventUsage:
+		if c.OnUsage != nil {
+			return c.OnUsage(event.Usage)
+		}
+	}
+	return nil
+}
+
 type Budget struct {
 	MaxInputTokens  int
 	MaxOutputTokens int
@@ -37,7 +61,7 @@ type RunRequest struct {
 	ThinkingEffort llm.ThinkingEffort
 	Budget         Budget
 	Stream         bool
-	OnEvent        llm.EventHandler
+	Callbacks      Callbacks
 	WrapUpPrompt   string
 }
 
@@ -148,10 +172,7 @@ func (a *Agent) Run(ctx context.Context, req RunRequest) (Result, error) {
 	eventMiddleware := slices.Clone(a.eventMiddleware)
 	a.mu.RUnlock()
 
-	handler := req.OnEvent
-	if handler == nil {
-		handler = func(llm.Event) error { return nil }
-	}
+	handler := req.Callbacks.handler
 	for i := len(eventMiddleware) - 1; i >= 0; i-- {
 		handler = eventMiddleware[i](handler)
 	}
@@ -207,6 +228,9 @@ func (a *Agent) Run(ctx context.Context, req RunRequest) (Result, error) {
 				executor = toolMiddleware[i](executor)
 			}
 			output, execErr := executor(ctx, call)
+			if execErr == nil && !json.Valid(output) {
+				execErr = fmt.Errorf("tool %q returned invalid JSON", call.Name)
+			}
 			if tool.Terminal() {
 				if execErr != nil {
 					return result, fmt.Errorf("terminal tool %q: %w", call.Name, execErr)
@@ -255,7 +279,11 @@ func budgetReached(usage llm.Usage, budget Budget, reserve bool) bool {
 	if budget.MaxInputTokens > 0 && usage.InputTokens >= budget.MaxInputTokens {
 		return true
 	}
-	if budget.MaxOutputTokens > 0 && usage.OutputTokens >= budget.MaxOutputTokens {
+	outputLimit := budget.MaxOutputTokens
+	if reserve && outputLimit > 0 {
+		outputLimit -= budget.WrapUpReserve
+	}
+	if budget.MaxOutputTokens > 0 && usage.OutputTokens >= outputLimit {
 		return true
 	}
 	limit := budget.MaxTotalTokens

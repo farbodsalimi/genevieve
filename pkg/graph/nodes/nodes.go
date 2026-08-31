@@ -60,8 +60,7 @@ func ToolNode[T any, U any](
 	})
 }
 
-// AgentNode delegates to agent.Agent.Handle, letting one node do LLM
-// tool-selection.
+// AgentNode delegates to Agent.Run, including its bounded multi-turn tool loop.
 func AgentNode[T any, U any](
 	a *agent.Agent,
 	provider string,

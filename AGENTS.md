@@ -43,9 +43,12 @@ return next, nil
 
 See `examples/graph/workflow.go` for a working pattern and `README.md "Writing a reducer"` for the zero-value guard convention.
 
-### Adding an LLM provider: Chat() must return parseable JSON
+### Adding an LLM provider requires structured tool round-tripping
 
-`agent.Agent.chooseTool` parses LLM responses into a `AgentToolInput` struct. If `Chat()` returns plain text or malformed JSON, tools silently break. Compare against `pkg/providers/openai/`, `anthropic/`, `google/`.
+Implement both `Generate` and `Stream`. Preserve assistant tool-call IDs and
+correlate tool-result messages, pass each tool's JSON Schema, report usage, map
+thinking effort, and emit text/tool/usage stream events. Compare against
+`pkg/providers/openai/`, `anthropic/`, and `google/`.
 
 ### Testing
 
