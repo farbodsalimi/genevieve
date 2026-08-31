@@ -36,7 +36,10 @@ func NewClient(_ context.Context, apiKey string, opts ...llm.LLMOption) (*Client
 
 func (c Client) Name() string { return "claude" }
 
-func (c Client) Generate(ctx context.Context, req llm.GenerateRequest) (llm.GenerateResponse, error) {
+func (c Client) Generate(
+	ctx context.Context,
+	req llm.GenerateRequest,
+) (llm.GenerateResponse, error) {
 	params, err := c.params(req)
 	if err != nil {
 		return llm.GenerateResponse{}, err
@@ -48,7 +51,11 @@ func (c Client) Generate(ctx context.Context, req llm.GenerateRequest) (llm.Gene
 	return anthropicResponse(message), nil
 }
 
-func (c Client) Stream(ctx context.Context, req llm.GenerateRequest, emit llm.EventHandler) (llm.GenerateResponse, error) {
+func (c Client) Stream(
+	ctx context.Context,
+	req llm.GenerateRequest,
+	emit llm.EventHandler,
+) (llm.GenerateResponse, error) {
 	params, err := c.params(req)
 	if err != nil {
 		return llm.GenerateResponse{}, err
@@ -94,7 +101,12 @@ func (c Client) params(req llm.GenerateRequest) (SDK.MessageNewParams, error) {
 		case llm.RoleUser:
 			messages = append(messages, SDK.NewUserMessage(SDK.NewTextBlock(msg.Content)))
 		case llm.RoleTool:
-			messages = append(messages, SDK.NewUserMessage(SDK.NewToolResultBlock(msg.ToolCallID, msg.Content, msg.IsError)))
+			messages = append(
+				messages,
+				SDK.NewUserMessage(
+					SDK.NewToolResultBlock(msg.ToolCallID, msg.Content, msg.IsError),
+				),
+			)
 		case llm.RoleAssistant:
 			blocks := []SDK.ContentBlockParamUnion{}
 			if msg.Content != "" {
@@ -103,7 +115,11 @@ func (c Client) params(req llm.GenerateRequest) (SDK.MessageNewParams, error) {
 			for _, call := range msg.ToolCalls {
 				var input any
 				if err := json.Unmarshal(call.Input, &input); err != nil {
-					return SDK.MessageNewParams{}, fmt.Errorf("anthropic tool call %q input: %w", call.Name, err)
+					return SDK.MessageNewParams{}, fmt.Errorf(
+						"anthropic tool call %q input: %w",
+						call.Name,
+						err,
+					)
 				}
 				blocks = append(blocks, SDK.NewToolUseBlock(call.ID, input, call.Name))
 			}
@@ -116,7 +132,11 @@ func (c Client) params(req llm.GenerateRequest) (SDK.MessageNewParams, error) {
 	for _, tool := range req.Tools {
 		var schema SDK.ToolInputSchemaParam
 		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
-			return SDK.MessageNewParams{}, fmt.Errorf("anthropic tool %q schema: %w", tool.Name, err)
+			return SDK.MessageNewParams{}, fmt.Errorf(
+				"anthropic tool %q schema: %w",
+				tool.Name,
+				err,
+			)
 		}
 		t := SDK.ToolUnionParamOfTool(schema, tool.Name)
 		t.OfTool.Description = SDK.String(tool.Description)
@@ -126,7 +146,13 @@ func (c Client) params(req llm.GenerateRequest) (SDK.MessageNewParams, error) {
 	if maxTokens == 0 {
 		maxTokens = c.options.MaxTokens
 	}
-	p := SDK.MessageNewParams{MaxTokens: int64(maxTokens), Messages: messages, Model: SDK.Model(c.options.Model), System: system, Tools: tools}
+	p := SDK.MessageNewParams{
+		MaxTokens: int64(maxTokens),
+		Messages:  messages,
+		Model:     SDK.Model(c.options.Model),
+		System:    system,
+		Tools:     tools,
+	}
 	if req.ThinkingEffort != llm.ThinkingNone {
 		p.Thinking = SDK.ThinkingConfigParamUnion{OfAdaptive: &SDK.ThinkingConfigAdaptiveParam{}}
 	}
@@ -134,13 +160,22 @@ func (c Client) params(req llm.GenerateRequest) (SDK.MessageNewParams, error) {
 }
 
 func anthropicResponse(message *SDK.Message) llm.GenerateResponse {
-	out := llm.GenerateResponse{Usage: llm.Usage{InputTokens: int(message.Usage.InputTokens), OutputTokens: int(message.Usage.OutputTokens)}, StopReason: llm.StopReason(message.StopReason)}
+	out := llm.GenerateResponse{
+		Usage: llm.Usage{
+			InputTokens:  int(message.Usage.InputTokens),
+			OutputTokens: int(message.Usage.OutputTokens),
+		},
+		StopReason: llm.StopReason(message.StopReason),
+	}
 	for _, block := range message.Content {
 		switch block.Type {
 		case "text":
 			out.Text += block.Text
 		case "tool_use":
-			out.ToolCalls = append(out.ToolCalls, llm.ToolCall{ID: block.ID, Name: block.Name, Input: block.Input})
+			out.ToolCalls = append(
+				out.ToolCalls,
+				llm.ToolCall{ID: block.ID, Name: block.Name, Input: block.Input},
+			)
 		}
 	}
 	return out

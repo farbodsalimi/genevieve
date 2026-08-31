@@ -126,7 +126,14 @@ func (a *Agent) Run(ctx context.Context, req RunRequest) (Result, error) {
 	definitions := make([]llm.ToolDefinition, 0, len(a.tools))
 	for name, tool := range a.tools {
 		tools[name] = tool
-		definitions = append(definitions, llm.ToolDefinition{Name: name, Description: tool.Description(), InputSchema: slices.Clone(tool.Schema())})
+		definitions = append(
+			definitions,
+			llm.ToolDefinition{
+				Name:        name,
+				Description: tool.Description(),
+				InputSchema: slices.Clone(tool.Schema()),
+			},
+		)
 	}
 	slices.SortFunc(definitions, func(x, y llm.ToolDefinition) int {
 		if x.Name < y.Name {
@@ -155,14 +162,26 @@ func (a *Agent) Run(ctx context.Context, req RunRequest) (Result, error) {
 		if budgetReached(result.Usage, req.Budget, true) {
 			return a.wrapUp(ctx, client, req, handler, result)
 		}
-		generation := llm.GenerateRequest{Messages: messages, Tools: definitions, ThinkingEffort: req.ThinkingEffort, MaxTokens: req.MaxTokens}
+		generation := llm.GenerateRequest{
+			Messages:       messages,
+			Tools:          definitions,
+			ThinkingEffort: req.ThinkingEffort,
+			MaxTokens:      req.MaxTokens,
+		}
 		response, err := generate(ctx, client, generation, req.Stream, handler)
 		if err != nil {
 			return result, err
 		}
 		result.Turns = turn
 		result.Usage = result.Usage.Add(response.Usage)
-		messages = append(messages, llm.Message{Role: llm.RoleAssistant, Content: response.Text, ToolCalls: slices.Clone(response.ToolCalls)})
+		messages = append(
+			messages,
+			llm.Message{
+				Role:      llm.RoleAssistant,
+				Content:   response.Text,
+				ToolCalls: slices.Clone(response.ToolCalls),
+			},
+		)
 		result.Messages = messages
 
 		if len(response.ToolCalls) == 0 {
@@ -179,9 +198,11 @@ func (a *Agent) Run(ctx context.Context, req RunRequest) (Result, error) {
 			if !exists {
 				return result, NewToolNotFoundError(call.Name)
 			}
-			executor := ToolExecutor(func(ctx context.Context, call llm.ToolCall) (json.RawMessage, error) {
-				return tool.Execute(ctx, call.Input)
-			})
+			executor := ToolExecutor(
+				func(ctx context.Context, call llm.ToolCall) (json.RawMessage, error) {
+					return tool.Execute(ctx, call.Input)
+				},
+			)
 			for i := len(toolMiddleware) - 1; i >= 0; i-- {
 				executor = toolMiddleware[i](executor)
 			}
@@ -200,7 +221,16 @@ func (a *Agent) Run(ctx context.Context, req RunRequest) (Result, error) {
 			if execErr != nil {
 				content = execErr.Error()
 			}
-			messages = append(messages, llm.Message{Role: llm.RoleTool, Content: content, ToolCallID: call.ID, ToolName: call.Name, IsError: execErr != nil})
+			messages = append(
+				messages,
+				llm.Message{
+					Role:       llm.RoleTool,
+					Content:    content,
+					ToolCallID: call.ID,
+					ToolName:   call.Name,
+					IsError:    execErr != nil,
+				},
+			)
 		}
 		result.Messages = messages
 	}
@@ -208,7 +238,13 @@ func (a *Agent) Run(ctx context.Context, req RunRequest) (Result, error) {
 	return result, NewTurnLimitError(req.MaxTurns)
 }
 
-func generate(ctx context.Context, client llm.LLM, req llm.GenerateRequest, stream bool, handler llm.EventHandler) (llm.GenerateResponse, error) {
+func generate(
+	ctx context.Context,
+	client llm.LLM,
+	req llm.GenerateRequest,
+	stream bool,
+	handler llm.EventHandler,
+) (llm.GenerateResponse, error) {
 	if stream {
 		return client.Stream(ctx, req, handler)
 	}
@@ -229,7 +265,13 @@ func budgetReached(usage llm.Usage, budget Budget, reserve bool) bool {
 	return budget.MaxTotalTokens > 0 && usage.Total() >= limit
 }
 
-func (a *Agent) wrapUp(ctx context.Context, client llm.LLM, req RunRequest, handler llm.EventHandler, result Result) (Result, error) {
+func (a *Agent) wrapUp(
+	ctx context.Context,
+	client llm.LLM,
+	req RunRequest,
+	handler llm.EventHandler,
+	result Result,
+) (Result, error) {
 	if req.Budget.WrapUpReserve <= 0 || budgetReached(result.Usage, req.Budget, false) {
 		result.StopReason = StopTokenBudget
 		return result, NewBudgetExceededError(result.Usage)
@@ -240,7 +282,17 @@ func (a *Agent) wrapUp(ctx context.Context, client llm.LLM, req RunRequest, hand
 	}
 	messages := slices.Clone(result.Messages)
 	messages = append(messages, llm.Message{Role: llm.RoleUser, Content: prompt})
-	response, err := generate(ctx, client, llm.GenerateRequest{Messages: messages, ThinkingEffort: req.ThinkingEffort, MaxTokens: req.Budget.WrapUpReserve}, req.Stream, handler)
+	response, err := generate(
+		ctx,
+		client,
+		llm.GenerateRequest{
+			Messages:       messages,
+			ThinkingEffort: req.ThinkingEffort,
+			MaxTokens:      req.Budget.WrapUpReserve,
+		},
+		req.Stream,
+		handler,
+	)
 	if err != nil {
 		return result, err
 	}

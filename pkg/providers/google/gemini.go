@@ -20,7 +20,10 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, apiKey string, opts ...llm.LLMOption) (*Client, error) {
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: apiKey, Backend: genai.BackendGeminiAPI})
+	client, err := genai.NewClient(
+		ctx,
+		&genai.ClientConfig{APIKey: apiKey, Backend: genai.BackendGeminiAPI},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("gemini client init: %w", err)
 	}
@@ -36,7 +39,10 @@ func NewClient(ctx context.Context, apiKey string, opts ...llm.LLMOption) (*Clie
 
 func (c Client) Name() string { return "gemini" }
 
-func (c Client) Generate(ctx context.Context, req llm.GenerateRequest) (llm.GenerateResponse, error) {
+func (c Client) Generate(
+	ctx context.Context,
+	req llm.GenerateRequest,
+) (llm.GenerateResponse, error) {
 	contents, config, err := c.params(req)
 	if err != nil {
 		return llm.GenerateResponse{}, err
@@ -48,7 +54,11 @@ func (c Client) Generate(ctx context.Context, req llm.GenerateRequest) (llm.Gene
 	return geminiResponse(response), nil
 }
 
-func (c Client) Stream(ctx context.Context, req llm.GenerateRequest, emit llm.EventHandler) (llm.GenerateResponse, error) {
+func (c Client) Stream(
+	ctx context.Context,
+	req llm.GenerateRequest,
+	emit llm.EventHandler,
+) (llm.GenerateResponse, error) {
 	contents, config, err := c.params(req)
 	if err != nil {
 		return llm.GenerateResponse{}, err
@@ -85,7 +95,9 @@ func (c Client) Stream(ctx context.Context, req llm.GenerateRequest, emit llm.Ev
 	return out, nil
 }
 
-func (c Client) params(req llm.GenerateRequest) ([]*genai.Content, *genai.GenerateContentConfig, error) {
+func (c Client) params(
+	req llm.GenerateRequest,
+) ([]*genai.Content, *genai.GenerateContentConfig, error) {
 	var contents []*genai.Content
 	config := &genai.GenerateContentConfig{}
 	for _, msg := range req.Messages {
@@ -94,9 +106,15 @@ func (c Client) params(req llm.GenerateRequest) ([]*genai.Content, *genai.Genera
 			if config.SystemInstruction == nil {
 				config.SystemInstruction = &genai.Content{Role: "user"}
 			}
-			config.SystemInstruction.Parts = append(config.SystemInstruction.Parts, &genai.Part{Text: msg.Content})
+			config.SystemInstruction.Parts = append(
+				config.SystemInstruction.Parts,
+				&genai.Part{Text: msg.Content},
+			)
 		case llm.RoleUser:
-			contents = append(contents, &genai.Content{Role: "user", Parts: []*genai.Part{{Text: msg.Content}}})
+			contents = append(
+				contents,
+				&genai.Content{Role: "user", Parts: []*genai.Part{{Text: msg.Content}}},
+			)
 		case llm.RoleAssistant:
 			content := &genai.Content{Role: "model"}
 			if msg.Content != "" {
@@ -107,7 +125,12 @@ func (c Client) params(req llm.GenerateRequest) ([]*genai.Content, *genai.Genera
 				if err := json.Unmarshal(call.Input, &args); err != nil {
 					return nil, nil, fmt.Errorf("gemini tool call %q input: %w", call.Name, err)
 				}
-				content.Parts = append(content.Parts, &genai.Part{FunctionCall: &genai.FunctionCall{ID: call.ID, Name: call.Name, Args: args}})
+				content.Parts = append(
+					content.Parts,
+					&genai.Part{
+						FunctionCall: &genai.FunctionCall{ID: call.ID, Name: call.Name, Args: args},
+					},
+				)
 			}
 			contents = append(contents, content)
 		case llm.RoleTool:
@@ -119,7 +142,21 @@ func (c Client) params(req llm.GenerateRequest) ([]*genai.Content, *genai.Genera
 			if msg.IsError {
 				key = "error"
 			}
-			contents = append(contents, &genai.Content{Role: "user", Parts: []*genai.Part{{FunctionResponse: &genai.FunctionResponse{ID: msg.ToolCallID, Name: msg.ToolName, Response: map[string]any{key: value}}}}})
+			contents = append(
+				contents,
+				&genai.Content{
+					Role: "user",
+					Parts: []*genai.Part{
+						{
+							FunctionResponse: &genai.FunctionResponse{
+								ID:       msg.ToolCallID,
+								Name:     msg.ToolName,
+								Response: map[string]any{key: value},
+							},
+						},
+					},
+				},
+			)
 		default:
 			return nil, nil, llm.NewInvalidRoleError(msg.Role)
 		}
@@ -131,7 +168,14 @@ func (c Client) params(req llm.GenerateRequest) ([]*genai.Content, *genai.Genera
 			if err := json.Unmarshal(definition.InputSchema, &schema); err != nil {
 				return nil, nil, fmt.Errorf("gemini tool %q schema: %w", definition.Name, err)
 			}
-			tool.FunctionDeclarations = append(tool.FunctionDeclarations, &genai.FunctionDeclaration{Name: definition.Name, Description: definition.Description, ParametersJsonSchema: schema})
+			tool.FunctionDeclarations = append(
+				tool.FunctionDeclarations,
+				&genai.FunctionDeclaration{
+					Name:                 definition.Name,
+					Description:          definition.Description,
+					ParametersJsonSchema: schema,
+				},
+			)
 		}
 		config.Tools = []*genai.Tool{tool}
 	}
@@ -171,7 +215,14 @@ func geminiResponse(response *genai.GenerateContentResponse) llm.GenerateRespons
 			out.Text += part.Text
 			if part.FunctionCall != nil {
 				input, _ := json.Marshal(part.FunctionCall.Args)
-				out.ToolCalls = append(out.ToolCalls, llm.ToolCall{ID: part.FunctionCall.ID, Name: part.FunctionCall.Name, Input: input})
+				out.ToolCalls = append(
+					out.ToolCalls,
+					llm.ToolCall{
+						ID:    part.FunctionCall.ID,
+						Name:  part.FunctionCall.Name,
+						Input: input,
+					},
+				)
 			}
 		}
 		if candidate.FinishReason == genai.FinishReasonMaxTokens {
@@ -182,7 +233,12 @@ func geminiResponse(response *genai.GenerateContentResponse) llm.GenerateRespons
 		out.StopReason = llm.StopToolUse
 	}
 	if response.UsageMetadata != nil {
-		out.Usage = llm.Usage{InputTokens: int(response.UsageMetadata.PromptTokenCount), OutputTokens: int(response.UsageMetadata.CandidatesTokenCount + response.UsageMetadata.ThoughtsTokenCount)}
+		out.Usage = llm.Usage{
+			InputTokens: int(response.UsageMetadata.PromptTokenCount),
+			OutputTokens: int(
+				response.UsageMetadata.CandidatesTokenCount + response.UsageMetadata.ThoughtsTokenCount,
+			),
+		}
 	}
 	return out
 }

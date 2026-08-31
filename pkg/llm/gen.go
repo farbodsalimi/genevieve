@@ -15,7 +15,11 @@ func NewGenevieve(router *Router) *Genevieve {
 
 // Query a specific provider
 // TODO: Add metrics/observability for provider performance
-func (g *Genevieve) Ask(ctx context.Context, provider string, req GenerateRequest) (GenerateResponse, error) {
+func (g *Genevieve) Ask(
+	ctx context.Context,
+	provider string,
+	req GenerateRequest,
+) (GenerateResponse, error) {
 	model, ok := g.router.Get(provider)
 	if !ok {
 		return GenerateResponse{}, NewProviderNotFoundError(provider)

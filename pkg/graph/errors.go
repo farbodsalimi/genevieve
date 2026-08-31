@@ -83,7 +83,10 @@ type DeadEndError struct {
 }
 
 func (e *DeadEndError) Error() string {
-	return fmt.Sprintf("graph compile: node %q is a dead end (no edges, no router, not terminal)", e.NodeID)
+	return fmt.Sprintf(
+		"graph compile: node %q is a dead end (no edges, no router, not terminal)",
+		e.NodeID,
+	)
 }
 
 func NewDeadEndError(id NodeID) *DeadEndError {
@@ -134,7 +137,12 @@ type RecursionLimitError struct {
 }
 
 func (e *RecursionLimitError) Error() string {
-	return fmt.Sprintf("graph run: recursion limit %d exceeded at step %d, frontier %v", e.Limit, e.Step, e.Frontier)
+	return fmt.Sprintf(
+		"graph run: recursion limit %d exceeded at step %d, frontier %v",
+		e.Limit,
+		e.Step,
+		e.Frontier,
+	)
 }
 
 func NewRecursionLimitError(limit, step int, frontier []NodeID) *RecursionLimitError {
@@ -186,12 +194,22 @@ type NodeErrorHandlerError struct {
 }
 
 func (e *NodeErrorHandlerError) Error() string {
-	return fmt.Sprintf("graph run: error handler for node %q failed at step %d: %v (original node error: %v)", e.NodeID, e.Step, e.HandlerErr, e.NodeErr)
+	return fmt.Sprintf(
+		"graph run: error handler for node %q failed at step %d: %v (original node error: %v)",
+		e.NodeID,
+		e.Step,
+		e.HandlerErr,
+		e.NodeErr,
+	)
 }
 
 func (e *NodeErrorHandlerError) Unwrap() error { return e.HandlerErr }
 
-func NewNodeErrorHandlerError(id NodeID, step int, nodeErr, handlerErr error) *NodeErrorHandlerError {
+func NewNodeErrorHandlerError(
+	id NodeID,
+	step int,
+	nodeErr, handlerErr error,
+) *NodeErrorHandlerError {
 	return &NodeErrorHandlerError{NodeID: id, Step: step, NodeErr: nodeErr, HandlerErr: handlerErr}
 }
 
@@ -204,7 +222,12 @@ type RouterExecutionError struct {
 }
 
 func (e *RouterExecutionError) Error() string {
-	return fmt.Sprintf("graph run: router for node %q failed at step %d: %v", e.NodeID, e.Step, e.Err)
+	return fmt.Sprintf(
+		"graph run: router for node %q failed at step %d: %v",
+		e.NodeID,
+		e.Step,
+		e.Err,
+	)
 }
 
 func (e *RouterExecutionError) Unwrap() error { return e.Err }

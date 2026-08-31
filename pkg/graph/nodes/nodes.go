@@ -31,7 +31,12 @@ func LLMNode[T any, U any](
 		if !ok {
 			return zero, llm.NewProviderNotFoundError(provider)
 		}
-		resp, err := client.Generate(ctx, llm.GenerateRequest{Messages: []llm.Message{{Role: llm.RoleUser, Content: prompt(state)}}})
+		resp, err := client.Generate(
+			ctx,
+			llm.GenerateRequest{
+				Messages: []llm.Message{{Role: llm.RoleUser, Content: prompt(state)}},
+			},
+		)
 		if err != nil {
 			return zero, err
 		}
@@ -65,7 +70,13 @@ func AgentNode[T any, U any](
 ) graph.Node[T, U] {
 	return graph.NodeFunc[T, U](func(ctx context.Context, state T) (U, error) {
 		var zero U
-		resp, err := a.Run(ctx, agent.RunRequest{Provider: provider, Messages: []llm.Message{{Role: llm.RoleUser, Content: prompt(state)}}})
+		resp, err := a.Run(
+			ctx,
+			agent.RunRequest{
+				Provider: provider,
+				Messages: []llm.Message{{Role: llm.RoleUser, Content: prompt(state)}},
+			},
+		)
 		if err != nil {
 			return zero, err
 		}

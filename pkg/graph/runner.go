@@ -48,7 +48,13 @@ func (r *Runner[T, U]) RunWithThread(ctx context.Context, threadID string, initi
 
 // runLoop drives super-steps from a starting state, frontier, and step counter.
 // Run starts at the entry with step 0; Resume starts past a checkpoint.
-func (r *Runner[T, U]) runLoop(ctx context.Context, threadID string, initial T, frontier []NodeID, startStep int) (T, error) {
+func (r *Runner[T, U]) runLoop(
+	ctx context.Context,
+	threadID string,
+	initial T,
+	frontier []NodeID,
+	startStep int,
+) (T, error) {
 	state := initial
 	step := startStep
 
@@ -87,7 +93,12 @@ func (r *Runner[T, U]) runLoop(ctx context.Context, threadID string, initial T, 
 // runSuperStep runs the whole frontier in parallel, then applies reducers
 // sequentially in deterministic (node-ID-sorted) order. Returns the new state
 // and the ID of the last-reduced node (for checkpoint metadata).
-func (r *Runner[T, U]) runSuperStep(ctx context.Context, state T, frontier []NodeID, step int) (T, NodeID, error) {
+func (r *Runner[T, U]) runSuperStep(
+	ctx context.Context,
+	state T,
+	frontier []NodeID,
+	step int,
+) (T, NodeID, error) {
 	type slot struct {
 		id      NodeID
 		update  U
@@ -177,7 +188,12 @@ func (r *Runner[T, U]) reduceGuarded(state T, update U) (out T, err error) {
 // nextFrontier computes the frontier for the following super-step from the new
 // state: terminal nodes contribute nothing; a node with static edges follows
 // them; a node with a router invokes it. Duplicates are removed.
-func (r *Runner[T, U]) nextFrontier(ctx context.Context, state T, frontier []NodeID, step int) ([]NodeID, error) {
+func (r *Runner[T, U]) nextFrontier(
+	ctx context.Context,
+	state T,
+	frontier []NodeID,
+	step int,
+) ([]NodeID, error) {
 	seen := make(map[NodeID]bool)
 	var next []NodeID
 	add := func(id NodeID) {
@@ -222,7 +238,11 @@ func (r *Runner[T, U]) nextFrontier(ctx context.Context, state T, frontier []Nod
 	return next, nil
 }
 
-func (r *Runner[T, U]) routeGuarded(ctx context.Context, router Router[T], state T) (id NodeID, err error) {
+func (r *Runner[T, U]) routeGuarded(
+	ctx context.Context,
+	router Router[T],
+	state T,
+) (id NodeID, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			err = NewNodePanicError("", 0, rec, debug.Stack())
@@ -231,7 +251,11 @@ func (r *Runner[T, U]) routeGuarded(ctx context.Context, router Router[T], state
 	return router(ctx, state)
 }
 
-func (r *Runner[T, U]) fanGuarded(ctx context.Context, fan FanRouter[T], state T) (ids []NodeID, err error) {
+func (r *Runner[T, U]) fanGuarded(
+	ctx context.Context,
+	fan FanRouter[T],
+	state T,
+) (ids []NodeID, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			err = NewNodePanicError("", 0, rec, debug.Stack())

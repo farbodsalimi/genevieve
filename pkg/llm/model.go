@@ -60,7 +60,10 @@ type Usage struct {
 
 func (u Usage) Total() int { return u.InputTokens + u.OutputTokens }
 func (u Usage) Add(v Usage) Usage {
-	return Usage{InputTokens: u.InputTokens + v.InputTokens, OutputTokens: u.OutputTokens + v.OutputTokens}
+	return Usage{
+		InputTokens:  u.InputTokens + v.InputTokens,
+		OutputTokens: u.OutputTokens + v.OutputTokens,
+	}
 }
 
 type ThinkingEffort string
