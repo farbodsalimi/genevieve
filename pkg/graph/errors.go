@@ -175,6 +175,26 @@ func NewNodeExecutionError(id NodeID, step int, err error) *NodeExecutionError {
 	return &NodeExecutionError{NodeID: id, Step: step, Err: err}
 }
 
+// NodeErrorHandlerError reports that a configured recovery handler could not
+// convert a node failure into an update. NodeErr preserves the original node
+// failure and HandlerErr is returned by Unwrap.
+type NodeErrorHandlerError struct {
+	NodeID     NodeID
+	Step       int
+	NodeErr    error
+	HandlerErr error
+}
+
+func (e *NodeErrorHandlerError) Error() string {
+	return fmt.Sprintf("graph run: error handler for node %q failed at step %d: %v (original node error: %v)", e.NodeID, e.Step, e.HandlerErr, e.NodeErr)
+}
+
+func (e *NodeErrorHandlerError) Unwrap() error { return e.HandlerErr }
+
+func NewNodeErrorHandlerError(id NodeID, step int, nodeErr, handlerErr error) *NodeErrorHandlerError {
+	return &NodeErrorHandlerError{NodeID: id, Step: step, NodeErr: nodeErr, HandlerErr: handlerErr}
+}
+
 // RouterExecutionError is returned when a Router or FanRouter returns an error.
 // It halts the run rather than leaving an undecidable frontier.
 type RouterExecutionError struct {

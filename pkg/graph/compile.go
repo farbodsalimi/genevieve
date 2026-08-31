@@ -15,6 +15,7 @@ type runnerConfig struct {
 	checkpointInterval int
 	cloner             any // func(T) T, type-asserted in Compile
 	checkpointer       any // Checkpointer[T], type-asserted in Compile
+	nodeErrorHandler   any // NodeErrorHandler[U], type-asserted in Compile
 }
 
 // WithRecursionLimit caps the number of super-steps a run may take before
@@ -33,6 +34,14 @@ func WithMaxParallel(n int) Option {
 // WithCheckpointInterval saves state every n super-steps. Default 1.
 func WithCheckpointInterval(n int) Option {
 	return func(c *runnerConfig) { c.checkpointInterval = n }
+}
+
+// WithNodeErrorHandler changes node failures from fail-fast errors into typed
+// updates. All nodes in the frontier are allowed to finish, then handlers and
+// reducers run in deterministic node-ID order. Returning an error from h still
+// stops the run. Router and reducer failures always remain fail-fast.
+func WithNodeErrorHandler[U any](h NodeErrorHandler[U]) Option {
+	return func(c *runnerConfig) { c.nodeErrorHandler = h }
 }
 
 // Compile validates the topology, then deep-copies it into an immutable Runner.
@@ -182,6 +191,13 @@ func (b *Builder[T, U]) Compile(opts ...Option) (*Runner[T, U], error) {
 			r.checkpointer = cp
 		} else {
 			return nil, NewCompileError("WithCheckpointer type does not match graph state type")
+		}
+	}
+	if cfg.nodeErrorHandler != nil {
+		if h, ok := cfg.nodeErrorHandler.(NodeErrorHandler[U]); ok {
+			r.nodeErrorHandler = h
+		} else {
+			return nil, NewCompileError("WithNodeErrorHandler type does not match graph update type")
 		}
 	}
 	return r, nil

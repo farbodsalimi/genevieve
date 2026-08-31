@@ -59,7 +59,7 @@ The code is split into focused packages by concern. Dependencies flow one way:
 - Two-phase: `Builder.Compile()` runs static analysis (dangling edges, unreachable nodes, dead ends) and returns an immutable `Runner` safe for concurrent reuse
 - Super-step execution: each step runs the active frontier in parallel via `errgroup`, then applies reducers in deterministic node-ID order
 - Supports sequential edges, parallel fan-out/fan-in, conditional/fan routing, bounded loops (recursion limit, not cycle rejection), `Stream`, checkpointing, `MapNode` map-reduce, and panic containment
-- Fail-fast on the first node/router error; caller panics are recovered as `NodePanicError`
+- Fail-fast by default; `WithNodeErrorHandler` can convert node failures into updates so siblings and downstream nodes continue. Router/reducer errors remain fail-fast. Caller panics are recovered as `NodePanicError`
 
 **Graph Bindings** (`pkg/graph/nodes/`):
 

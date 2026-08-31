@@ -26,6 +26,7 @@ type Runner[T any, U any] struct {
 	checkpointInterval int
 	cloner             func(T) T
 	checkpointer       Checkpointer[T]
+	nodeErrorHandler   NodeErrorHandler[U]
 	acyclic            bool
 }
 
@@ -88,8 +89,9 @@ func (r *Runner[T, U]) runLoop(ctx context.Context, threadID string, initial T, 
 // and the ID of the last-reduced node (for checkpoint metadata).
 func (r *Runner[T, U]) runSuperStep(ctx context.Context, state T, frontier []NodeID, step int) (T, NodeID, error) {
 	type slot struct {
-		id     NodeID
-		update U
+		id      NodeID
+		update  U
+		execErr error
 	}
 	results := make([]slot, len(frontier))
 
@@ -101,14 +103,25 @@ func (r *Runner[T, U]) runSuperStep(ctx context.Context, state T, frontier []Nod
 		eg.Go(func() (err error) {
 			defer func() {
 				if rec := recover(); rec != nil {
-					err = NewNodePanicError(id, step, rec, debug.Stack())
+					panicErr := NewNodePanicError(id, step, rec, debug.Stack())
+					if r.nodeErrorHandler == nil {
+						err = panicErr
+						return
+					}
+					results[i] = slot{id: id, execErr: panicErr}
+					err = nil
 				}
 			}()
 			// snapshot inside the guard so a panicking cloner is contained too.
 			snapshot := r.snapshot(state)
 			u, execErr := node.Execute(gctx, snapshot)
 			if execErr != nil {
-				return NewNodeExecutionError(id, step, execErr)
+				nodeErr := NewNodeExecutionError(id, step, execErr)
+				if r.nodeErrorHandler == nil {
+					return nodeErr
+				}
+				results[i] = slot{id: id, execErr: nodeErr}
+				return nil
 			}
 			results[i] = slot{id: id, update: u}
 			return nil
@@ -124,6 +137,13 @@ func (r *Runner[T, U]) runSuperStep(ctx context.Context, state T, frontier []Nod
 
 	var lastID NodeID
 	for _, res := range results {
+		if res.execErr != nil {
+			update, err := r.handleNodeErrorGuarded(res.id, res.execErr)
+			if err != nil {
+				return state, "", NewNodeErrorHandlerError(res.id, step, res.execErr, err)
+			}
+			res.update = update
+		}
 		merged, err := r.reduceGuarded(state, res.update)
 		if err != nil {
 			return state, "", NewReducerError(res.id, err)
@@ -132,6 +152,15 @@ func (r *Runner[T, U]) runSuperStep(ctx context.Context, state T, frontier []Nod
 		lastID = res.id
 	}
 	return state, lastID, nil
+}
+
+func (r *Runner[T, U]) handleNodeErrorGuarded(id NodeID, nodeErr error) (out U, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = NewNodePanicError(id, 0, rec, debug.Stack())
+		}
+	}()
+	return r.nodeErrorHandler(id, nodeErr)
 }
 
 // reduceGuarded runs the reducer with panic containment on the runner's own

@@ -487,6 +487,76 @@ func TestRun_FailFast(t *testing.T) {
 	<-peerCancelled // confirms the peer was cancelled
 }
 
+func TestRun_NodeErrorHandlerContinuesToFanIn(t *testing.T) {
+	boom := errors.New("boom")
+	peerFinished := make(chan struct{})
+
+	runner, err := NewBuilder(appendReducer()).
+		AddNode("root", appendNode("root")).
+		AddNode("bad", NodeFunc[testState, testUpdate](func(context.Context, testState) (testUpdate, error) {
+			return testUpdate{}, boom
+		})).
+		AddNode("peer", NodeFunc[testState, testUpdate](func(context.Context, testState) (testUpdate, error) {
+			close(peerFinished)
+			return testUpdate{Entry: "peer", Delta: 1}, nil
+		})).
+		AddNode("synthesize", NodeFunc[testState, testUpdate](func(_ context.Context, s testState) (testUpdate, error) {
+			return testUpdate{Entry: fmt.Sprintf("synthesized-%d", len(s.Log))}, nil
+		})).
+		AddFanEdge("root", func(context.Context, testState) ([]NodeID, error) {
+			return []NodeID{"bad", "peer"}, nil
+		}).
+		AddEdge("bad", "synthesize").
+		AddEdge("peer", "synthesize").
+		SetEntryPoint("root").
+		SetTerminal("synthesize").
+		Compile(WithNodeErrorHandler(func(id NodeID, err error) (testUpdate, error) {
+			var nodeErr *NodeExecutionError
+			if id != "bad" || !errors.As(err, &nodeErr) || !errors.Is(err, boom) {
+				t.Fatalf("unexpected handled error for %q: %v", id, err)
+			}
+			return testUpdate{Entry: "bad failed"}, nil
+		}))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	final, err := runner.Run(context.Background(), testState{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	<-peerFinished
+	if want := []string{"root", "bad failed", "peer", "synthesized-3"}; !slices.Equal(final.Log, want) {
+		t.Fatalf("log = %v, want %v", final.Log, want)
+	}
+}
+
+func TestRun_NodeErrorHandlerErrorStopsRun(t *testing.T) {
+	nodeBoom := errors.New("node boom")
+	handlerBoom := errors.New("handler boom")
+	runner, err := NewBuilder(appendReducer()).
+		AddNode("bad", NodeFunc[testState, testUpdate](func(context.Context, testState) (testUpdate, error) {
+			return testUpdate{}, nodeBoom
+		})).
+		SetEntryPoint("bad").
+		SetTerminal("bad").
+		Compile(WithNodeErrorHandler(func(NodeID, error) (testUpdate, error) {
+			return testUpdate{}, handlerBoom
+		}))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	_, err = runner.Run(context.Background(), testState{})
+	var target *NodeErrorHandlerError
+	if !errors.As(err, &target) {
+		t.Fatalf("expected NodeErrorHandlerError, got %v", err)
+	}
+	if !errors.Is(err, handlerBoom) || !errors.Is(target.NodeErr, nodeBoom) {
+		t.Fatalf("handler or node error was not preserved: %v", err)
+	}
+}
+
 func TestRun_ReducerError(t *testing.T) {
 	boom := errors.New("reduce boom")
 	badReducer := ReducerFunc[testState, testUpdate](func(s testState, u testUpdate) (testState, error) {
