@@ -6,10 +6,12 @@ import (
 	"sync"
 )
 
-// Checkpoint is a snapshot of run state after a super-step.
+// Checkpoint is a snapshot of run state after a super-step. Frontier is the set
+// of nodes due to run in the next super-step, captured whole so a resume replays
+// every parallel branch — not just the last-reduced node.
 type Checkpoint[T any] struct {
 	ThreadID string
-	NodeID   NodeID
+	Frontier []NodeID
 	Step     int
 	State    T
 }

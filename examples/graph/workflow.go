@@ -1,67 +1,103 @@
 package main
 
-// The workflow's data model: the state the graph carries, the partial update a
-// node emits, and the rule for merging one into the other. Prompt text lives in
-// prompts.go; the topology that wires it all together lives in main.go.
-
 import (
+	"encoding/json"
 	"slices"
 
 	"github.com/farbodsalimi/genevieve/pkg/graph"
+	"github.com/farbodsalimi/genevieve/pkg/llm"
 )
 
-// maxRevisions bounds the draft→critique loop. The critique router enforces it
-// against State.Revisions; graph.WithRecursionLimit is only the engine-level
-// backstop for a router that never converges.
-const maxRevisions = 3
+const maxRevisions = 2
 
-// State is the workflow's typed state — no map[string]any in sight.
+type SpecialistReport struct {
+	Specialist string
+	Report     string
+}
+
+type NodeFailure struct {
+	Node  string
+	Error string
+}
+
+type ReportObservation struct {
+	Title       string   `json:"title"`
+	Summary     string   `json:"summary"`
+	Findings    []string `json:"findings"`
+	Risks       []string `json:"risks"`
+	Limitations []string `json:"limitations"`
+}
+
 type State struct {
-	Topic     string
-	Draft     string
-	Critiques []string
-	Revisions int
-	Published string
+	Query      string
+	Accepted   bool
+	IntakeNote string
+	Reports    []SpecialistReport
+	Failures   []NodeFailure
+	Draft      ReportObservation
+	DraftJSON  string
+	Review     string
+	Revisions  int
+	Usage      llm.Usage
+	Streamed   string
 }
 
-// Update is a partial change produced by a node. A node fills in only the
-// fields it is responsible for and leaves the rest zero.
+// Clone gives parallel nodes independent backing arrays.
+func (s State) Clone() State {
+	s.Reports = slices.Clone(s.Reports)
+	s.Failures = slices.Clone(s.Failures)
+	s.Draft.Findings = slices.Clone(s.Draft.Findings)
+	s.Draft.Risks = slices.Clone(s.Draft.Risks)
+	s.Draft.Limitations = slices.Clone(s.Draft.Limitations)
+	return s
+}
+
 type Update struct {
-	Draft     string
-	Critique  string
-	Published string
-	Revised   bool
+	Accepted   *bool
+	IntakeNote string
+	Report     *SpecialistReport
+	Failure    *NodeFailure
+	Draft      *ReportObservation
+	DraftJSON  string
+	Review     string
+	Revised    bool
+	Usage      llm.Usage
+	Streamed   string
 }
 
-// reducer merges an Update into State, one field at a time. A zero value means
-// the node did not produce that field, so each string field is guarded — except
-// Revisions, which is counted off the explicit Revised flag because a zero-value
-// check cannot distinguish "no delta" from a real one.
 func reducer() graph.Reducer[State, Update] {
 	return graph.ReducerFunc[State, Update](func(s State, u Update) (State, error) {
-		nextState := s
-		// copy the critique slice so the incoming state is never mutated
-		nextState.Critiques = slices.Clone(s.Critiques)
-		if u.Draft != "" {
-			nextState.Draft = u.Draft
+		next := s.Clone()
+		if u.Accepted != nil {
+			next.Accepted = *u.Accepted
 		}
-		if u.Critique != "" {
-			nextState.Critiques = append(nextState.Critiques, u.Critique)
+		if u.IntakeNote != "" {
+			next.IntakeNote = u.IntakeNote
+		}
+		if u.Report != nil {
+			next.Reports = append(next.Reports, *u.Report)
+		}
+		if u.Failure != nil {
+			next.Failures = append(next.Failures, *u.Failure)
+		}
+		if u.Draft != nil {
+			next.Draft = *u.Draft
+			next.DraftJSON = u.DraftJSON
+		}
+		if u.Review != "" {
+			next.Review = u.Review
 		}
 		if u.Revised {
-			nextState.Revisions = s.Revisions + 1
+			next.Revisions++
 		}
-		if u.Published != "" {
-			nextState.Published = u.Published
-		}
-		return nextState, nil
+		next.Usage = next.Usage.Add(u.Usage)
+		next.Streamed += u.Streamed
+		return next, nil
 	})
 }
 
-// lastCritique returns the most recent critique, or "" before the first one.
-func (s State) lastCritique() string {
-	if len(s.Critiques) == 0 {
-		return ""
-	}
-	return s.Critiques[len(s.Critiques)-1]
+func decodeObservation(raw json.RawMessage) (ReportObservation, error) {
+	var report ReportObservation
+	err := json.Unmarshal(raw, &report)
+	return report, err
 }

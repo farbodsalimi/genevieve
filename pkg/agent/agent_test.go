@@ -264,8 +264,7 @@ func TestRun_TurnLimit(t *testing.T) {
 		model,
 		&mockTool{name: "echo"},
 	).Run(context.Background(), RunRequest{Provider: "mock", Messages: []llm.Message{{Role: llm.RoleUser, Content: "x"}}, MaxTurns: 1})
-	var target *TurnLimitError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*TurnLimitError](err); !ok {
 		t.Fatalf("expected TurnLimitError, got %v", err)
 	}
 }

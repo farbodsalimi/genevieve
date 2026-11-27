@@ -56,8 +56,7 @@ func TestCompile_MissingEntryPoint(t *testing.T) {
 		AddNode("a", appendNode("a")).
 		SetTerminal("a")
 	_, err := b.Compile()
-	var target *NoEntryPointError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*NoEntryPointError](err); !ok {
 		t.Fatalf("expected NoEntryPointError, got %v", err)
 	}
 }
@@ -68,8 +67,7 @@ func TestCompile_EntryPointUnregistered(t *testing.T) {
 		SetTerminal("a").
 		SetEntryPoint("missing")
 	_, err := b.Compile()
-	var target *NodeNotFoundError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*NodeNotFoundError](err); !ok {
 		t.Fatalf("expected NodeNotFoundError, got %v", err)
 	}
 }
@@ -81,8 +79,7 @@ func TestCompile_DuplicateNode(t *testing.T) {
 		SetEntryPoint("a").
 		SetTerminal("a")
 	_, err := b.Compile()
-	var target *DuplicateNodeError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*DuplicateNodeError](err); !ok {
 		t.Fatalf("expected DuplicateNodeError, got %v", err)
 	}
 }
@@ -93,8 +90,7 @@ func TestCompile_DanglingEdge(t *testing.T) {
 		AddEdge("a", "ghost").
 		SetEntryPoint("a")
 	_, err := b.Compile()
-	var target *DanglingEdgeError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*DanglingEdgeError](err); !ok {
 		t.Fatalf("expected DanglingEdgeError, got %v", err)
 	}
 }
@@ -116,8 +112,7 @@ func TestCompile_UnreachableNode(t *testing.T) {
 		SetTerminal("a", "b").
 		SetEntryPoint("a")
 	_, err := b.Compile()
-	var target *UnreachableNodeError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*UnreachableNodeError](err); !ok {
 		t.Fatalf("expected UnreachableNodeError, got %v", err)
 	}
 }
@@ -127,8 +122,7 @@ func TestCompile_DeadEndNode(t *testing.T) {
 		AddNode("a", appendNode("a")).
 		SetEntryPoint("a")
 	_, err := b.Compile()
-	var target *DeadEndError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*DeadEndError](err); !ok {
 		t.Fatalf("expected DeadEndError, got %v", err)
 	}
 }
@@ -150,8 +144,7 @@ func TestCompile_TerminalUnregistered(t *testing.T) {
 		SetEntryPoint("a").
 		SetTerminal("ghost")
 	_, err := b.Compile()
-	var target *NodeNotFoundError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*NodeNotFoundError](err); !ok {
 		t.Fatalf("expected NodeNotFoundError, got %v", err)
 	}
 }
@@ -165,8 +158,7 @@ func TestCompile_EdgeRouterConflict(t *testing.T) {
 		SetEntryPoint("a").
 		SetTerminal("b")
 	_, err := b.Compile()
-	var target *EdgeRouterConflictError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*EdgeRouterConflictError](err); !ok {
 		t.Fatalf("expected EdgeRouterConflictError, got %v", err)
 	}
 }
@@ -177,8 +169,7 @@ func TestCompile_MissingReducer(t *testing.T) {
 		SetEntryPoint("a").
 		SetTerminal("a")
 	_, err := b.Compile()
-	var target *NoReducerError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*NoReducerError](err); !ok {
 		t.Fatalf("expected NoReducerError, got %v", err)
 	}
 }
@@ -571,8 +562,7 @@ func TestRun_ReducerError(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	_, err = runner.Run(context.Background(), testState{})
-	var target *ReducerError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*ReducerError](err); !ok {
 		t.Fatalf("expected ReducerError, got %v", err)
 	}
 	if !errors.Is(err, boom) {
@@ -593,8 +583,7 @@ func TestRun_RouterError(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	_, err = runner.Run(context.Background(), testState{})
-	var target *RouterExecutionError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*RouterExecutionError](err); !ok {
 		t.Fatalf("expected RouterExecutionError, got %v", err)
 	}
 	if !errors.Is(err, boom) {

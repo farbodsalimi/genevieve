@@ -174,41 +174,50 @@ if u.Revised {
 For graphs whose state is just `[]llm.Message`, `pkg/graph/chat` ships a
 ready-made `State`/`Update`/`Reducer` trio, so there's nothing to write.
 
-#### Loops, branching, and LLM nodes
+#### Agentic workflows
 
 Beyond a straight line, a graph supports conditional routing, parallel
-fan-out/fan-in, and bounded loops — cycles are legal, runaway recursion is not:
+fan-out/fan-in, bounded loops, and configurable node failure handling. The
+full graph example combines them into an intake-gated research pipeline:
 
 ```go
-// After a critique, either loop back to draft or move on to publish.
-route := func(ctx context.Context, s State) (graph.NodeID, error) {
-	if approved(s.lastCritique()) || s.Revisions >= maxRevisions {
-		return "publish", nil
-	}
-	return "draft", nil
-}
-
 runner, err := graph.NewBuilder(reducer()).
-	AddNode("draft", draft).
-	AddNode("critique", critique).
-	AddNode("publish", publish).
-	AddEdge("draft", "critique").
-	AddConditionalEdge("critique", route).
-	SetEntryPoint("draft").
-	SetTerminal("publish").
-	Compile(graph.WithRecursionLimit(2*maxRevisions + 2))
+	AddNode("intake", intake).
+	AddNode("evidence", evidenceAgent).
+	AddNode("risk", riskAgent).
+	AddNode("skeptic", skepticAgent).
+	AddNode("synthesize", synthesizer).
+	AddNode("review", reviewer).
+	AddFanEdge("intake", func(ctx context.Context, s State) ([]graph.NodeID, error) {
+		if !s.Accepted {
+			return []graph.NodeID{"reject"}, nil
+		}
+		return []graph.NodeID{"evidence", "risk", "skeptic"}, nil
+	}).
+	AddEdge("evidence", "synthesize").
+	AddEdge("risk", "synthesize").
+	AddEdge("skeptic", "synthesize").
+	AddConditionalEdge("review", func(ctx context.Context, s State) (graph.NodeID, error) {
+		if approved(s.Review) || s.Revisions >= maxRevisions {
+			return "publish", nil
+		}
+		return "synthesize", nil
+	}).
+	Compile(
+		graph.WithMaxParallel(3),
+		graph.WithRecursionLimit(10),
+		graph.WithNodeErrorHandler(specialistFailureAsUpdate),
+	)
+if err != nil {
+	log.Fatal(err)
+}
 ```
 
-`pkg/graph/nodes` supplies the nodes that call a model, so an LLM step is
-just a node like any other:
-
-```go
-draft := nodes.LLMNode(
-	router, provider,
-	draftPrompt,                                     // func(State) string
-	func(resp string) Update { return Update{Draft: resp} },
-)
-```
+The specialists are bounded multi-turn agents using a JSON-schema evidence
+tool. Their reports are reduced deterministically, the synthesizer streams its
+response and finishes through a structured terminal tool, and a quality gate
+can route the report through a bounded revision loop. Specialist errors become
+explicit state updates; failures in critical nodes remain fatal.
 
 Runnable: `go run ./examples/graph/` (needs `GENEVIEVE_OPENAIAPIKEY`)
 

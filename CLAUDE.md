@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `go run ./examples/multi-models/` - Run multi-provider example
 - `go run ./examples/agent/` - Run agent example
 - `go run ./examples/graph-simple/` - Run the minimal graph example (no API key needed)
-- `go run ./examples/graph/` - Run graph orchestration example (draft→critique→publish loop)
+- `go run ./examples/graph/` - Run the intake→parallel research→review graph example
 
 ## Architecture Overview
 
@@ -113,7 +113,7 @@ examples/                # Usage examples
 ├── multi-models/       # Provider comparison
 ├── agent/              # Agent with tools
 ├── graph-simple/       # Smallest graph: two sequential nodes, no LLM, no API key
-└── graph/              # Graph orchestration (draft→critique→publish loop)
+└── graph/              # Agentic research workflow with parallel fan-out and review loop
     ├── main.go         # Topology only
     ├── workflow.go     # State, Update, reducer
     ├── prompts.go      # Prompt construction

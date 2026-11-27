@@ -1,32 +1,23 @@
-// Command graph demonstrates a bounded draft→critique→publish loop on the
-// generic graph engine. This file is the topology; the supporting pieces are
-// split out so the shape of the workflow is visible in one screen:
-//
-//	config.go    provider/router setup
-//	workflow.go  State, Update, and the reducer that merges them
-//	prompts.go   prompt construction and the APPROVE/REVISE check
+// Command graph demonstrates an intake-gated, parallel, failure-tolerant
+// research workflow with agent tool loops and structured synthesis.
 package main
 
 import (
 	"context"
-	"runtime/debug"
+	"fmt"
+	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/farbodsalimi/genevieve/pkg/agent"
 	"github.com/farbodsalimi/genevieve/pkg/graph"
 	"github.com/farbodsalimi/genevieve/pkg/graph/nodes"
+	"github.com/farbodsalimi/genevieve/pkg/llm"
 )
 
 func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Error("Panic occurred:", r)
-			log.Error("Stack trace:\n", string(debug.Stack()))
-		}
-	}()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	router, provider, err := newProvider(ctx)
@@ -34,60 +25,145 @@ func main() {
 		log.Fatalf("provider: %v", err)
 	}
 
-	// draft: write the piece, or revise it against the newest critique.
-	draft := nodes.LLMNode(
-		router, provider,
-		draftPrompt,
-		func(resp string) Update { return Update{Draft: resp, Revised: true} },
-	)
-
-	// critique: judge the draft. Reply must start with APPROVE or REVISE.
-	critique := nodes.LLMNode(
-		router, provider,
-		critiquePrompt,
-		func(resp string) Update { return Update{Critique: resp} },
-	)
-
-	// publish: finalize the accepted draft.
-	publish := graph.NodeFunc[State, Update](func(ctx context.Context, s State) (Update, error) {
-		return Update{Published: s.Draft}, nil
-	})
-
-	// route: after a critique, loop back to draft or move on to publish.
-	route := func(ctx context.Context, s State) (graph.NodeID, error) {
-		if approved(s.lastCritique()) || s.Revisions >= maxRevisions {
-			return "publish", nil
-		}
-		return "draft", nil
+	researcher := agent.NewAgent(router)
+	if err := researcher.RegisterTool(evidenceLookupTool{}); err != nil {
+		log.Fatalf("register evidence tool: %v", err)
+	}
+	synthesizer := agent.NewAgent(router)
+	if err := synthesizer.RegisterTool(reportObservationTool{}); err != nil {
+		log.Fatalf("register report tool: %v", err)
 	}
 
+	intake := nodes.LLMNode(router, provider, intakePrompt, parseIntake)
+	specialist := func(role string) graph.Node[State, Update] {
+		return graph.NodeFunc[State, Update](func(ctx context.Context, s State) (Update, error) {
+			result, err := researcher.Run(ctx, agent.RunRequest{
+				Provider:  provider,
+				Messages:  []llm.Message{{Role: llm.RoleUser, Content: specialistPrompt(role, s)}},
+				MaxTurns:  4,
+				MaxTokens: 700,
+				Budget:    agent.Budget{MaxTotalTokens: 2_500, WrapUpReserve: 250},
+			})
+			if err != nil {
+				return Update{}, err
+			}
+			return Update{
+				Report: &SpecialistReport{Specialist: role, Report: result.Output},
+				Usage:  result.Usage,
+			}, nil
+		})
+	}
+
+	synthesize := graph.NodeFunc[State, Update](func(ctx context.Context, s State) (Update, error) {
+		var streamed string
+		result, err := synthesizer.Run(ctx, agent.RunRequest{
+			Provider:       provider,
+			Messages:       []llm.Message{{Role: llm.RoleUser, Content: synthesisPrompt(s)}},
+			MaxTurns:       3,
+			MaxTokens:      1_200,
+			ThinkingEffort: llm.ThinkingHigh,
+			Budget:         agent.Budget{MaxTotalTokens: 4_000, WrapUpReserve: 400},
+			Stream:         true,
+			Callbacks: agent.Callbacks{
+				OnText: func(delta string) error {
+					streamed += delta
+					fmt.Print(delta)
+					return nil
+				},
+				OnToolCall: func(call llm.ToolCall) error {
+					log.Infof("synthesizer called %s", call.Name)
+					return nil
+				},
+			},
+		})
+		if err != nil {
+			return Update{}, err
+		}
+		if result.TerminalTool != "report_observation" {
+			return Update{}, fmt.Errorf("synthesizer ended without report_observation")
+		}
+		report, err := decodeObservation(result.TerminalOutput)
+		if err != nil {
+			return Update{}, err
+		}
+		return Update{
+			Draft:     &report,
+			DraftJSON: string(result.TerminalOutput),
+			Revised:   true,
+			Usage:     result.Usage,
+			Streamed:  streamed,
+		}, nil
+	})
+
+	review := nodes.LLMNode(router, provider, reviewPrompt, func(response string) Update {
+		return Update{Review: response}
+	})
+	reject := graph.NodeFunc[State, Update](func(context.Context, State) (Update, error) {
+		return Update{}, nil
+	})
+	publish := graph.NodeFunc[State, Update](func(context.Context, State) (Update, error) {
+		return Update{}, nil
+	})
+
 	runner, err := graph.NewBuilder(reducer()).
-		AddNode("draft", draft).
-		AddNode("critique", critique).
+		AddNode("intake", intake).
+		AddNode("evidence", specialist("evidence analyst")).
+		AddNode("risk", specialist("risk and tradeoff analyst")).
+		AddNode("skeptic", specialist("skeptical reviewer")).
+		AddNode("synthesize", synthesize).
+		AddNode("review", review).
+		AddNode("reject", reject).
 		AddNode("publish", publish).
-		AddEdge("draft", "critique").
-		AddConditionalEdge("critique", route).
-		SetEntryPoint("draft").
-		SetTerminal("publish").
-		// Each revision costs a draft and a critique super-step; the +2 covers
-		// the final publish step and one step of slack.
-		Compile(graph.WithRecursionLimit(2*maxRevisions + 2))
+		AddFanEdge("intake", func(_ context.Context, s State) ([]graph.NodeID, error) {
+			if !s.Accepted {
+				return []graph.NodeID{"reject"}, nil
+			}
+			return []graph.NodeID{"evidence", "risk", "skeptic"}, nil
+		}).
+		AddEdge("evidence", "synthesize").
+		AddEdge("risk", "synthesize").
+		AddEdge("skeptic", "synthesize").
+		AddEdge("synthesize", "review").
+		AddConditionalEdge("review", func(_ context.Context, s State) (graph.NodeID, error) {
+			if approved(s.Review) || s.Revisions >= maxRevisions {
+				return "publish", nil
+			}
+			return "synthesize", nil
+		}).
+		SetEntryPoint("intake").
+		SetTerminal("reject", "publish").
+		Compile(
+			graph.WithMaxParallel(3),
+			graph.WithRecursionLimit(10),
+			graph.WithNodeErrorHandler(func(id graph.NodeID, nodeErr error) (Update, error) {
+				switch id {
+				case "evidence", "risk", "skeptic":
+					return Update{Failure: &NodeFailure{Node: string(id), Error: nodeErr.Error()}}, nil
+				default:
+					return Update{}, nodeErr
+				}
+			}),
+		)
 	if err != nil {
 		log.Fatalf("compile: %v", err)
 	}
 
-	final, err := runner.Run(
-		ctx,
-		State{Topic: "why bounded loops beat unbounded agent while-loops"},
-	)
+	query := "Should a production agent workflow continue when one parallel specialist fails?"
+	if len(os.Args) > 1 {
+		query = os.Args[1]
+	}
+	final, err := runner.Run(ctx, State{Query: query})
 	if err != nil {
 		log.Fatalf("run: %v", err)
 	}
-
-	log.Infof("Revisions: %d", final.Revisions)
-	for i, c := range final.Critiques {
-		log.Infof("Critique %d: %s", i+1, c)
+	if !final.Accepted {
+		log.Infof("Request rejected: %s", final.IntakeNote)
+		return
 	}
-	log.Infof("Published:\n%s", final.Published)
 
+	log.Infof("specialists=%d failures=%d revisions=%d agent_tokens=%d", len(final.Reports), len(final.Failures), final.Revisions, final.Usage.Total())
+	fmt.Printf("\n\n%s\n\n%s\n", final.Draft.Title, final.Draft.Summary)
+	for _, finding := range final.Draft.Findings {
+		fmt.Printf("- %s\n", finding)
+	}
 }
