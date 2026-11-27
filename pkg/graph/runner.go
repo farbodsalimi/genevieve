@@ -172,6 +172,15 @@ func (r *Runner[T, U]) handleNodeErrorGuarded(id NodeID, nodeErr error) (out U, 
 	return r.nodeErrorHandler(id, nodeErr)
 }
 
+func (r *Runner[T, U]) handleNodeErrorGuarded(id NodeID, nodeErr error) (out U, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = NewNodePanicError(id, 0, rec, debug.Stack())
+		}
+	}()
+	return r.nodeErrorHandler(id, nodeErr)
+}
+
 // reduceGuarded runs the reducer with panic containment on the runner's own
 // goroutine.
 func (r *Runner[T, U]) reduceGuarded(state T, update U) (out T, err error) {
