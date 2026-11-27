@@ -64,16 +64,21 @@ func (r *Runner[T, U]) runLoop(
 			return state, NewRecursionLimitError(r.recursionLimit, step, frontier)
 		}
 
-		newState, lastID, err := r.runSuperStep(ctx, state, frontier, step)
+		newState, err := r.runSuperStep(ctx, state, frontier, step)
 		if err != nil {
 			return state, err
 		}
 		state = newState
 
+		next, err := r.nextFrontier(ctx, state, frontier, step)
+		if err != nil {
+			return state, err
+		}
+
 		if r.checkpointer != nil && step%r.checkpointInterval == 0 {
 			if err := r.checkpointer.Save(ctx, Checkpoint[T]{
 				ThreadID: threadID,
-				NodeID:   lastID,
+				Frontier: next,
 				Step:     step,
 				State:    state,
 			}); err != nil {
@@ -81,24 +86,19 @@ func (r *Runner[T, U]) runLoop(
 			}
 		}
 
-		next, err := r.nextFrontier(ctx, state, frontier, step)
-		if err != nil {
-			return state, err
-		}
 		frontier = next
 	}
 	return state, nil
 }
 
 // runSuperStep runs the whole frontier in parallel, then applies reducers
-// sequentially in deterministic (node-ID-sorted) order. Returns the new state
-// and the ID of the last-reduced node (for checkpoint metadata).
+// sequentially in deterministic (node-ID-sorted) order. Returns the new state.
 func (r *Runner[T, U]) runSuperStep(
 	ctx context.Context,
 	state T,
 	frontier []NodeID,
 	step int,
-) (T, NodeID, error) {
+) (T, error) {
 	type slot struct {
 		id      NodeID
 		update  U
@@ -140,29 +140,27 @@ func (r *Runner[T, U]) runSuperStep(
 	}
 
 	if err := eg.Wait(); err != nil {
-		return state, "", err
+		return state, err
 	}
 
 	// Sort by node ID so fan-in is deterministic and testable.
 	sort.Slice(results, func(a, b int) bool { return results[a].id < results[b].id })
 
-	var lastID NodeID
 	for _, res := range results {
 		if res.execErr != nil {
 			update, err := r.handleNodeErrorGuarded(res.id, res.execErr)
 			if err != nil {
-				return state, "", NewNodeErrorHandlerError(res.id, step, res.execErr, err)
+				return state, NewNodeErrorHandlerError(res.id, step, res.execErr, err)
 			}
 			res.update = update
 		}
 		merged, err := r.reduceGuarded(state, res.update)
 		if err != nil {
-			return state, "", NewReducerError(res.id, err)
+			return state, NewReducerError(res.id, err)
 		}
 		state = merged
-		lastID = res.id
 	}
-	return state, lastID, nil
+	return state, nil
 }
 
 func (r *Runner[T, U]) handleNodeErrorGuarded(id NodeID, nodeErr error) (out U, err error) {
@@ -305,16 +303,22 @@ func (r *Runner[T, U]) Stream(ctx context.Context, initial T) (<-chan T, <-chan 
 				return
 			}
 
-			newState, lastID, err := r.runSuperStep(ctx, state, frontier, step)
+			newState, err := r.runSuperStep(ctx, state, frontier, step)
 			if err != nil {
 				errs <- err
 				return
 			}
 			state = newState
 
+			next, err := r.nextFrontier(ctx, state, frontier, step)
+			if err != nil {
+				errs <- err
+				return
+			}
+
 			if r.checkpointer != nil && step%r.checkpointInterval == 0 {
 				if err := r.checkpointer.Save(ctx, Checkpoint[T]{
-					ThreadID: threadID, NodeID: lastID, Step: step, State: state,
+					ThreadID: threadID, Frontier: next, Step: step, State: state,
 				}); err != nil {
 					errs <- err
 					return
@@ -328,11 +332,6 @@ func (r *Runner[T, U]) Stream(ctx context.Context, initial T) (<-chan T, <-chan 
 				return
 			}
 
-			next, err := r.nextFrontier(ctx, state, frontier, step)
-			if err != nil {
-				errs <- err
-				return
-			}
 			frontier = next
 		}
 	}()
@@ -351,16 +350,12 @@ func (r *Runner[T, U]) Resume(ctx context.Context, threadID string) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	// The checkpoint captures state after node cp.NodeID's super-step. Continue
-	// from the frontier that node leads to.
-	frontier, err := r.nextFrontier(ctx, cp.State, []NodeID{cp.NodeID}, cp.Step)
-	if err != nil {
-		return zero, err
-	}
-	if len(frontier) == 0 {
+	// The checkpoint captures state plus the whole frontier due next, so every
+	// parallel branch resumes — not just the last-reduced node's successors.
+	if len(cp.Frontier) == 0 {
 		return cp.State, nil
 	}
-	return r.runLoop(ctx, threadID, cp.State, frontier, cp.Step)
+	return r.runLoop(ctx, threadID, cp.State, cp.Frontier, cp.Step)
 }
 
 func newThreadID() string {

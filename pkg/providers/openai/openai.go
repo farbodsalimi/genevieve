@@ -34,7 +34,10 @@ func NewClient(_ context.Context, apiKey string, opts ...llm.LLMOption) (*Client
 
 func (c Client) Name() string { return "openai" }
 
-func (c Client) Generate(ctx context.Context, req llm.GenerateRequest) (llm.GenerateResponse, error) {
+func (c Client) Generate(
+	ctx context.Context,
+	req llm.GenerateRequest,
+) (llm.GenerateResponse, error) {
 	params, err := c.params(req)
 	if err != nil {
 		return llm.GenerateResponse{}, err
@@ -49,7 +52,11 @@ func (c Client) Generate(ctx context.Context, req llm.GenerateRequest) (llm.Gene
 	return response(completion), nil
 }
 
-func (c Client) Stream(ctx context.Context, req llm.GenerateRequest, emit llm.EventHandler) (llm.GenerateResponse, error) {
+func (c Client) Stream(
+	ctx context.Context,
+	req llm.GenerateRequest,
+	emit llm.EventHandler,
+) (llm.GenerateResponse, error) {
 	params, err := c.params(req)
 	if err != nil {
 		return llm.GenerateResponse{}, err
@@ -100,7 +107,16 @@ func (c Client) params(req llm.GenerateRequest) (openai_sdk.ChatCompletionNewPar
 		case llm.RoleAssistant:
 			m := openai_sdk.AssistantMessage(msg.Content)
 			for _, call := range msg.ToolCalls {
-				m.OfAssistant.ToolCalls = append(m.OfAssistant.ToolCalls, openai_sdk.ChatCompletionMessageToolCallParam{ID: call.ID, Function: openai_sdk.ChatCompletionMessageToolCallFunctionParam{Name: call.Name, Arguments: string(call.Input)}})
+				m.OfAssistant.ToolCalls = append(
+					m.OfAssistant.ToolCalls,
+					openai_sdk.ChatCompletionMessageToolCallParam{
+						ID: call.ID,
+						Function: openai_sdk.ChatCompletionMessageToolCallFunctionParam{
+							Name:      call.Name,
+							Arguments: string(call.Input),
+						},
+					},
+				)
 			}
 			messages = append(messages, m)
 		}
@@ -109,15 +125,32 @@ func (c Client) params(req llm.GenerateRequest) (openai_sdk.ChatCompletionNewPar
 	for _, tool := range req.Tools {
 		var schema map[string]any
 		if err := json.Unmarshal(tool.InputSchema, &schema); err != nil {
-			return openai_sdk.ChatCompletionNewParams{}, fmt.Errorf("openai tool %q schema: %w", tool.Name, err)
+			return openai_sdk.ChatCompletionNewParams{}, fmt.Errorf(
+				"openai tool %q schema: %w",
+				tool.Name,
+				err,
+			)
 		}
-		tools = append(tools, openai_sdk.ChatCompletionToolParam{Function: shared.FunctionDefinitionParam{Name: tool.Name, Description: openai_sdk.String(tool.Description), Parameters: schema}})
+		tools = append(
+			tools,
+			openai_sdk.ChatCompletionToolParam{
+				Function: shared.FunctionDefinitionParam{
+					Name:        tool.Name,
+					Description: openai_sdk.String(tool.Description),
+					Parameters:  schema,
+				},
+			},
+		)
 	}
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = c.options.MaxTokens
 	}
-	p := openai_sdk.ChatCompletionNewParams{Model: c.options.Model, Messages: messages, Tools: tools}
+	p := openai_sdk.ChatCompletionNewParams{
+		Model:    c.options.Model,
+		Messages: messages,
+		Tools:    tools,
+	}
 	if maxTokens > 0 {
 		p.MaxCompletionTokens = openai_sdk.Int(int64(maxTokens))
 	}
@@ -134,9 +167,23 @@ func (c Client) params(req llm.GenerateRequest) (openai_sdk.ChatCompletionNewPar
 
 func response(completion *openai_sdk.ChatCompletion) llm.GenerateResponse {
 	choice := completion.Choices[0]
-	out := llm.GenerateResponse{Text: choice.Message.Content, Usage: llm.Usage{InputTokens: int(completion.Usage.PromptTokens), OutputTokens: int(completion.Usage.CompletionTokens)}, StopReason: llm.StopEndTurn}
+	out := llm.GenerateResponse{
+		Text: choice.Message.Content,
+		Usage: llm.Usage{
+			InputTokens:  int(completion.Usage.PromptTokens),
+			OutputTokens: int(completion.Usage.CompletionTokens),
+		},
+		StopReason: llm.StopEndTurn,
+	}
 	for _, call := range choice.Message.ToolCalls {
-		out.ToolCalls = append(out.ToolCalls, llm.ToolCall{ID: call.ID, Name: call.Function.Name, Input: json.RawMessage(call.Function.Arguments)})
+		out.ToolCalls = append(
+			out.ToolCalls,
+			llm.ToolCall{
+				ID:    call.ID,
+				Name:  call.Function.Name,
+				Input: json.RawMessage(call.Function.Arguments),
+			},
+		)
 	}
 	if len(out.ToolCalls) > 0 {
 		out.StopReason = llm.StopToolUse

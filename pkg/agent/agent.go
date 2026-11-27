@@ -173,8 +173,8 @@ func (a *Agent) Run(ctx context.Context, req RunRequest) (Result, error) {
 	a.mu.RUnlock()
 
 	handler := req.Callbacks.handler
-	for i := len(eventMiddleware) - 1; i >= 0; i-- {
-		handler = eventMiddleware[i](handler)
+	for _, e := range slices.Backward(eventMiddleware) {
+		handler = e(handler)
 	}
 
 	messages := slices.Clone(req.Messages)
@@ -224,8 +224,8 @@ func (a *Agent) Run(ctx context.Context, req RunRequest) (Result, error) {
 					return tool.Execute(ctx, call.Input)
 				},
 			)
-			for i := len(toolMiddleware) - 1; i >= 0; i-- {
-				executor = toolMiddleware[i](executor)
+			for _, t := range slices.Backward(toolMiddleware) {
+				executor = t(executor)
 			}
 			output, execErr := executor(ctx, call)
 			if execErr == nil && !json.Valid(output) {

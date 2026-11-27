@@ -106,8 +106,7 @@ func TestCheckpoint_HistoryInStepOrder(t *testing.T) {
 func TestCheckpoint_LoadLatestNotFound(t *testing.T) {
 	cp := NewMemoryCheckpointer[testState](0)
 	_, err := cp.LoadLatest(context.Background(), "missing")
-	var target *CheckpointNotFoundError
-	if !errors.As(err, &target) {
+	if _, ok := errors.AsType[*CheckpointNotFoundError](err); !ok {
 		t.Fatalf("expected CheckpointNotFoundError, got %v", err)
 	}
 }
@@ -122,10 +121,11 @@ func TestResume_ContinuesFromCheckpoint(t *testing.T) {
 
 	// Now run a graph that stops after node "a" via a checkpointer, then resume.
 	cp := NewMemoryCheckpointer[testState](0)
-	// Simulate an interrupted run: manually save a checkpoint after node "a".
+	// Simulate an interrupted run: manually save a checkpoint after node "a",
+	// whose next frontier is {b}.
 	afterA, _ := appendReducer().Reduce(testState{}, testUpdate{Entry: "a", Delta: 1})
 	if err := cp.Save(context.Background(), Checkpoint[testState]{
-		ThreadID: "t1", NodeID: "a", Step: 1, State: afterA,
+		ThreadID: "t1", Frontier: []NodeID{"b"}, Step: 1, State: afterA,
 	}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
