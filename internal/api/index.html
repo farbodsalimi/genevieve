@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<base href="/" />
+<title>genevieve · runs</title>
+<style>
+  :root {
+    --bg:#0e1117; --panel:#161b22; --border:#2a313c; --text:#c9d1d9; --muted:#7d8590;
+    --idle:#30363d; --active:#d29922; --done:#238636; --error:#da3633; --accent:#58a6ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  header { display:flex; align-items:center; gap:14px; padding:12px 20px;
+    border-bottom:1px solid var(--border); background:var(--panel); }
+  header h1 { font-size:15px; margin:0; font-weight:600; }
+  select, button { font:inherit; border-radius:6px; border:1px solid var(--border); }
+  select { background:var(--bg); color:var(--text); padding:6px 8px; }
+  button { background:var(--done); color:#fff; border:0; padding:7px 14px; font-weight:600; cursor:pointer; }
+  button.ghost { background:var(--idle); color:var(--text); }
+  button:disabled { opacity:.5; cursor:default; }
+  #conn { margin-left:auto; color:var(--muted); font-size:12px; }
+  main { display:grid; grid-template-columns:1fr 360px; height:calc(100vh - 54px); }
+  #graph { overflow:auto; padding:24px; }
+  aside { border-left:1px solid var(--border); display:grid;
+    grid-template-rows:auto minmax(120px,1fr) auto minmax(120px,240px); min-height:0; }
+  aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted);
+    margin:0; padding:10px 14px 4px; }
+  #runs { overflow:auto; }
+  .run { padding:6px 14px; cursor:pointer; border-left:3px solid transparent; display:flex; gap:8px; align-items:baseline; }
+  .run:hover { background:#1b2230; }
+  .run.sel { background:#1b2230; border-left-color:var(--accent); }
+  .run .id { color:var(--muted); font-size:11px; }
+  .run .st { margin-left:auto; font-size:11px; }
+  .badge { padding:1px 6px; border-radius:10px; font-size:11px; }
+  .running { background:#3a2f0b; color:var(--active); }
+  .succeeded { background:#0f2e18; color:var(--done); }
+  .failed,.canceled { background:#2d1413; color:var(--error); }
+  #detail { padding:4px 14px 10px; }
+  #detail .row { display:flex; gap:8px; margin-bottom:6px; align-items:center; }
+  #state { margin:0; padding:0 14px 12px; overflow:auto; font-size:12px; white-space:pre; color:#adbac7; }
+  .node rect { fill:var(--panel); stroke:var(--idle); stroke-width:2; transition:stroke .15s, fill .15s; }
+  .node text { fill:var(--text); font-size:13px; font-weight:600; }
+  .node .meta { fill:var(--muted); font-size:10px; font-weight:400; }
+  .node.active rect { stroke:var(--active); fill:#251f10; }
+  .node.active { animation:pulse 1s ease-in-out infinite; }
+  .node.done rect { stroke:var(--done); }
+  .node.error rect { stroke:var(--error); fill:#2d1413; }
+  .node.routed rect { stroke-dasharray:2 3; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.6;} }
+  .edge { stroke:var(--edge,#3d4450); stroke-width:2; fill:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>genevieve runs</h1>
+  <select id="graphSel"></select>
+  <button id="start">Start run</button>
+  <span id="conn">—</span>
+</header>
+<main>
+  <div id="graph"><svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <aside>
+    <div style="min-height:0;display:grid;grid-template-rows:auto 1fr">
+      <h2>Runs</h2>
+      <div id="runs"></div>
+    </div>
+    <div>
+      <h2>Selected run</h2>
+      <div id="detail"><div class="row" style="color:var(--muted)">pick a run</div></div>
+    </div>
+    <div style="min-height:0;display:grid;grid-template-rows:auto 1fr">
+      <h2>State <span id="step" style="float:right;color:var(--muted)"></span></h2>
+      <pre id="state">—</pre>
+    </div>
+    <div></div>
+  </aside>
+</main>
+
+<script>
+const SVG_NS="http://www.w3.org/2000/svg";
+const NW=150,NH=46,COL_GAP=90,ROW_GAP=28,PAD=20;
+const $=id=>document.getElementById(id);
+const svg=$("svg");
+
+let topo=null, nodeEls={}, pos={};
+let selected=null;        // runID
+let seen=new Set();       // nodes observed in any frontier of the selected run
+let graphName=null;
+
+async function boot(){
+  const graphs=await (await fetch("graphs")).json();
+  const sel=$("graphSel");
+  (graphs||[]).forEach(g=>{ const o=document.createElement("option"); o.value=o.textContent=g; sel.appendChild(o); });
+  sel.onchange=()=>loadTopology(sel.value);
+  $("start").onclick=startRun;
+  if(graphs&&graphs.length){ await loadTopology(graphs[0]); }
+  tick(); setInterval(tick, 750);
+}
+
+async function loadTopology(name){
+  graphName=name;
+  topo=await (await fetch("graphs/"+encodeURIComponent(name)+"/topology")).json();
+  nodeEls={}; pos={}; svg.innerHTML="";
+  layout(); render();
+}
+
+function layout(){
+  const nodes=topo.Nodes, edges=topo.Edges||{}, routed=new Set(topo.Routed||[]);
+  const layer={}; nodes.forEach(n=>layer[n]= n===topo.Entry?0:-1);
+  for(let i=0;i<nodes.length;i++) for(const f in edges){ if(layer[f]<0)continue;
+    for(const t of edges[f]) layer[t]=Math.max(layer[t],layer[f]+1); }
+  const maxReached=Math.max(0,...Object.values(layer));
+  nodes.forEach(n=>{ if(layer[n]<0) layer[n]=maxReached+1; });
+  const cols={}; nodes.forEach(n=>(cols[layer[n]]=cols[layer[n]]||[]).push(n));
+  const keys=Object.keys(cols).map(Number).sort((a,b)=>a-b);
+  const maxRows=Math.max(...keys.map(c=>cols[c].length));
+  const height=PAD*2+maxRows*NH+(maxRows-1)*ROW_GAP;
+  keys.forEach((c,ci)=>{ const list=cols[c].sort(); const colH=list.length*NH+(list.length-1)*ROW_GAP;
+    const y0=(height-colH)/2;
+    list.forEach((n,ri)=>pos[n]={x:PAD+ci*(NW+COL_GAP),y:y0+ri*(NH+ROW_GAP),routed:routed.has(n)}); });
+  const width=PAD*2+keys.length*NW+(keys.length-1)*COL_GAP;
+  svg.setAttribute("width",width); svg.setAttribute("height",height);
+  svg.setAttribute("viewBox",`0 0 ${width} ${height}`);
+}
+
+function edge(f,t){ const a=pos[f],b=pos[t]; if(!a||!b)return;
+  const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
+  const p=document.createElementNS(SVG_NS,"path");
+  p.setAttribute("d",`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`);
+  p.setAttribute("class","edge"); svg.appendChild(p); }
+
+function render(){
+  const edges=topo.Edges||{};
+  for(const f in edges) for(const t of edges[f]) edge(f,t);
+  topo.Nodes.forEach(id=>{ const p=pos[id];
+    const g=document.createElementNS(SVG_NS,"g");
+    g.setAttribute("class","node"+(p.routed?" routed":""));
+    g.setAttribute("transform",`translate(${p.x},${p.y})`);
+    const rect=document.createElementNS(SVG_NS,"rect");
+    rect.setAttribute("width",NW); rect.setAttribute("height",NH); rect.setAttribute("rx",8);
+    const label=document.createElementNS(SVG_NS,"text"); label.setAttribute("x",12); label.setAttribute("y",22); label.textContent=id;
+    const meta=document.createElementNS(SVG_NS,"text"); meta.setAttribute("x",12); meta.setAttribute("y",37); meta.setAttribute("class","meta");
+    if(id===topo.Entry) meta.textContent="entry";
+    g.append(rect,label,meta); svg.appendChild(g); nodeEls[id]={g,meta}; });
+}
+
+function paint(frontier, status){
+  const front=new Set(frontier||[]);
+  front.forEach(n=>seen.add(n));
+  topo.Nodes.forEach(id=>{
+    const el=nodeEls[id]; if(!el) return;
+    let cls="";
+    if(status==="running"){ if(front.has(id)) cls="active"; else if(seen.has(id)) cls="done"; }
+    else if(status==="succeeded"){ if(seen.has(id)) cls="done"; }
+    else if(status==="failed"||status==="canceled"){ if(front.has(id)) cls="error"; else if(seen.has(id)) cls="done"; }
+    el.g.setAttribute("class","node"+(pos[id].routed?" routed ":" ")+cls);
+  });
+}
+
+async function startRun(){
+  if(!graphName) return;
+  const res=await fetch("runs",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({kind:"graph",name:graphName,initial:{}})});
+  const {id}=await res.json();
+  select(id);
+  tick();
+}
+
+function select(id){ selected=id; seen=new Set(); renderDetail(null); }
+
+async function tick(){
+  try{
+    const runs=await (await fetch("runs")).json();
+    $("conn").textContent="connected";
+    renderRuns(runs||[]);
+  }catch(e){ $("conn").textContent="disconnected"; }
+  if(selected){
+    try{
+      const d=await (await fetch("runs/"+selected)).json();
+      renderDetail(d);
+      if(d.record && d.record.name===graphName) paint(d.record.frontier, d.record.status);
+      $("state").textContent = d.state ? JSON.stringify(d.state,null,2) : "—";
+      $("step").textContent = d.record ? "step "+d.record.step : "";
+    }catch(e){}
+  }
+}
+
+function renderRuns(runs){
+  const box=$("runs"); box.innerHTML="";
+  runs.forEach(r=>{
+    const row=document.createElement("div");
+    row.className="run"+(r.id===selected?" sel":"");
+    row.innerHTML=`<span>${r.name}</span><span class="id">${r.id.slice(0,8)}</span>`+
+      `<span class="st badge ${r.status}">${r.status}</span>`;
+    row.onclick=()=>{ select(r.id); tick(); };
+    box.appendChild(row);
+  });
+}
+
+function renderDetail(d){
+  const box=$("detail");
+  if(!d||!d.record){ box.innerHTML=`<div class="row" style="color:var(--muted)">${selected?"loading…":"pick a run"}</div>`; return; }
+  const r=d.record;
+  const canResume = r.kind==="graph" && (r.status==="failed"||r.status==="canceled");
+  const canCancel = r.status==="running";
+  box.innerHTML=`<div class="row"><span class="badge ${r.status}">${r.status}</span>
+      <span class="id" style="color:var(--muted)">${r.id.slice(0,12)}</span></div>
+    <div class="row">
+      <button class="ghost" id="resume" ${canResume?"":"disabled"}>Resume</button>
+      <button class="ghost" id="cancel" ${canCancel?"":"disabled"}>Cancel</button>
+    </div>`;
+  const rb=$("resume"), cb=$("cancel");
+  if(rb) rb.onclick=async()=>{ await fetch("runs/"+r.id+"/resume",{method:"POST"}); tick(); };
+  if(cb) cb.onclick=async()=>{ await fetch("runs/"+r.id+"/cancel",{method:"POST"}); tick(); };
+}
+
+boot();
+</script>
+</body>
+</html>
